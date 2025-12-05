@@ -1,24 +1,37 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { Stack } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
-import 'react-native-reanimated';
+/**
+ * Root Layout - Główny layout aplikacji FitCoach
+ *
+ * Zawiera wszystkie providery i główną nawigację.
+ * Expo Router dostarcza własny NavigationContainer,
+ * więc używamy NavigationIndependentTree dla naszej nawigacji.
+ */
 
-import { useColorScheme } from '@/hooks/use-color-scheme';
+import React from 'react'
+import { StatusBar } from 'expo-status-bar'
+import { SafeAreaProvider } from 'react-native-safe-area-context'
+import { NavigationIndependentTree } from '@react-navigation/native'
+import { QueryClientProvider } from '@tanstack/react-query'
+import 'react-native-reanimated'
 
-export const unstable_settings = {
-  anchor: '(tabs)',
-};
+import { queryClient } from '../src/api/queryClient'
+import { AuthProvider } from '../src/context/AuthContext'
+import RootNavigator from '../src/navigation'
+
+// ============================================
+// ROOT LAYOUT
+// ============================================
 
 export default function RootLayout() {
-  const colorScheme = useColorScheme();
-
-  return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Modal' }} />
-      </Stack>
-      <StatusBar style="auto" />
-    </ThemeProvider>
-  );
+	return (
+		<QueryClientProvider client={queryClient}>
+			<AuthProvider>
+				<SafeAreaProvider>
+					<NavigationIndependentTree>
+						<RootNavigator />
+					</NavigationIndependentTree>
+					<StatusBar style="light" />
+				</SafeAreaProvider>
+			</AuthProvider>
+		</QueryClientProvider>
+	)
 }
