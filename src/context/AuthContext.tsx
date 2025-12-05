@@ -12,8 +12,10 @@ import React, {
   useEffect,
   useCallback,
   useMemo,
+  useRef,
   type ReactNode,
 } from 'react';
+import { AppState, type AppStateStatus } from 'react-native';
 import { supabase } from '../api/supabase';
 import {
   signIn as authSignIn,
@@ -32,6 +34,16 @@ import {
   removePushToken,
 } from '../services/notifications';
 import type { Profile, ClientData } from '../types';
+
+// ============================================
+// STAŁE
+// ============================================
+
+/**
+ * Czas nieaktywności w tle po którym następuje automatyczne wylogowanie (w ms)
+ * 2 minuty = 120000 ms
+ */
+const SESSION_TIMEOUT_MS = 2 * 60 * 1000;
 
 // ============================================
 // TYPY
@@ -123,6 +135,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [clientData, setClientData] = useState<ClientData | null>(null);
 
+  // Ref do przechowywania czasu wejścia w tło
+  const backgroundTimeRef = useRef<number | null>(null);
+  const appStateRef = useRef<AppStateStatus>(AppState.currentState);
+
   // Computed
   const isAuthenticated = currentUser !== null;
 
@@ -163,6 +179,61 @@ export function AuthProvider({ children }: AuthProviderProps) {
       subscription.unsubscribe();
     };
   }, []);
+
+  /**
+   * Automatyczne wylogowanie po powrocie z tła
+   * Jeśli aplikacja była w tle dłużej niż SESSION_TIMEOUT_MS, wyloguj użytkownika
+   */
+  useEffect(() => {
+    const handleAppStateChange = async (nextAppState: AppStateStatus) => {
+      // Aplikacja wchodzi w tło
+      if (
+        appStateRef.current === 'active' &&
+        (nextAppState === 'background' || nextAppState === 'inactive')
+      ) {
+        backgroundTimeRef.current = Date.now();
+        console.log('📱 Aplikacja w tle - zapisano czas:', new Date().toLocaleTimeString());
+      }
+
+      // Aplikacja wraca na pierwszy plan
+      if (
+        (appStateRef.current === 'background' || appStateRef.current === 'inactive') &&
+        nextAppState === 'active'
+      ) {
+        if (backgroundTimeRef.current && currentUser) {
+          const timeInBackground = Date.now() - backgroundTimeRef.current;
+          console.log(`📱 Aplikacja aktywna - czas w tle: ${Math.round(timeInBackground / 1000)}s`);
+
+          // Sprawdź czy minął czas sesji
+          if (timeInBackground >= SESSION_TIMEOUT_MS) {
+            console.log('⏰ Sesja wygasła - automatyczne wylogowanie');
+            
+            // Wyloguj użytkownika
+            try {
+              if (currentUser?.id) {
+                await removePushToken(currentUser.id);
+              }
+              await authSignOut();
+              setCurrentUser(null);
+              setProfile(null);
+              setClientData(null);
+            } catch (error) {
+              console.error('Błąd podczas automatycznego wylogowania:', error);
+            }
+          }
+        }
+        backgroundTimeRef.current = null;
+      }
+
+      appStateRef.current = nextAppState;
+    };
+
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
+
+    return () => {
+      subscription.remove();
+    };
+  }, [currentUser]);
 
   // ============================================
   // FUNKCJE POMOCNICZE

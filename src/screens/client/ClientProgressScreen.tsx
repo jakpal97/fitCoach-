@@ -1,7 +1,7 @@
 /**
  * ClientProgressScreen - Ekran postępów klienta
  *
- * Wyświetla pomiary, statystyki i historię treningów.
+ * Wyświetla pomiary, statystyki, porównania miesięczne i historię.
  */
 
 import React, { useState, useMemo, useCallback } from 'react'
@@ -22,7 +22,6 @@ import { Ionicons } from '@expo/vector-icons'
 import { useAuth } from '../../context/AuthContext'
 import {
 	useMeasurements,
-	useMeasurementStats,
 	useAddMeasurement,
 	useDeleteMeasurement,
 	type Measurement,
@@ -31,49 +30,232 @@ import {
 import { colors } from '../../theme/colors'
 
 // ============================================
-// KOMPONENT KARTY STATYSTYKI
+// HELPER FUNCTIONS
 // ============================================
 
-interface StatCardProps {
-	icon: string
-	label: string
-	value: string | number | undefined
-	change?: number
-	unit?: string
+function formatDate(dateStr: string) {
+	return new Date(dateStr).toLocaleDateString('pl-PL', {
+		day: 'numeric',
+		month: 'long',
+		year: 'numeric',
+	})
 }
 
-function StatCard({ icon, label, value, change, unit = '' }: StatCardProps) {
-	const isPositive = change && change > 0
-	const isNegative = change && change < 0
+function formatShortDate(dateStr: string) {
+	return new Date(dateStr).toLocaleDateString('pl-PL', {
+		day: 'numeric',
+		month: 'short',
+	})
+}
 
+function getDaysSinceLastMeasurement(measurements: Measurement[]): number {
+	if (measurements.length === 0) return -1
+	const lastDate = new Date(measurements[0].measurement_date)
+	const today = new Date()
+	const diffTime = Math.abs(today.getTime() - lastDate.getTime())
+	return Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+}
+
+function getMonthlyComparison(measurements: Measurement[]) {
+	if (measurements.length < 2) return null
+	
+	const latest = measurements[0]
+	const today = new Date()
+	const oneMonthAgo = new Date(today.getFullYear(), today.getMonth() - 1, today.getDate())
+	
+	// Znajdź pomiar sprzed około miesiąca
+	const oldMeasurement = measurements.find(m => {
+		const date = new Date(m.measurement_date)
+		return date <= oneMonthAgo
+	})
+	
+	if (!oldMeasurement) {
+		// Jeśli nie ma pomiaru sprzed miesiąca, użyj najstarszego
+		const oldest = measurements[measurements.length - 1]
+		if (oldest.id === latest.id) return null
+		return { latest, previous: oldest, isMonthly: false }
+	}
+	
+	return { latest, previous: oldMeasurement, isMonthly: true }
+}
+
+// ============================================
+// KOMPONENT PRZYPOMNIENIA
+// ============================================
+
+interface ReminderBannerProps {
+	daysSince: number
+	onAddMeasurement: () => void
+}
+
+function ReminderBanner({ daysSince, onAddMeasurement }: ReminderBannerProps) {
+	if (daysSince < 25 && daysSince !== -1) return null
+	
+	const message = daysSince === -1 
+		? 'Dodaj pierwszy pomiar, aby śledzić postępy!'
+		: daysSince >= 30 
+			? `Minął miesiąc od ostatniego pomiaru! Czas na nowe wymiary 📏`
+			: `Zbliża się czas na nowy pomiar (za ${30 - daysSince} dni)`
+	
+	const isUrgent = daysSince >= 30 || daysSince === -1
+	
 	return (
-		<View style={styles.statCard}>
-			<Ionicons name={icon as any} size={24} color={colors.primary} />
-			<Text style={styles.statValue}>{value !== undefined ? `${value}${unit}` : '-'}</Text>
-			<Text style={styles.statLabel}>{label}</Text>
-			{change !== undefined && (
-				<View
-					style={[
-						styles.changeBadge,
-						isPositive && styles.changeBadgePositive,
-						isNegative && styles.changeBadgeNegative,
-					]}>
-					<Ionicons
-						name={isPositive ? 'arrow-up' : isNegative ? 'arrow-down' : 'remove'}
-						size={12}
-						color={isPositive ? colors.error : isNegative ? colors.success : colors.textSecondary}
-					/>
-					<Text
-						style={[
-							styles.changeText,
-							isPositive && styles.changeTextPositive,
-							isNegative && styles.changeTextNegative,
-						]}>
-						{Math.abs(change).toFixed(1)}
-						{unit}
-					</Text>
-				</View>
-			)}
+		<TouchableOpacity 
+			style={[styles.reminderBanner, isUrgent && styles.reminderBannerUrgent]}
+			onPress={onAddMeasurement}
+			activeOpacity={0.8}
+		>
+			<View style={styles.reminderContent}>
+				<Ionicons 
+					name={isUrgent ? "alert-circle" : "time-outline"} 
+					size={24} 
+					color={isUrgent ? colors.warning : colors.primary} 
+				/>
+				<Text style={styles.reminderText}>{message}</Text>
+			</View>
+			<View style={styles.reminderButton}>
+				<Ionicons name="add" size={20} color={colors.textOnPrimary} />
+			</View>
+		</TouchableOpacity>
+	)
+}
+
+// ============================================
+// KOMPONENT PORÓWNANIA
+// ============================================
+
+interface ComparisonSectionProps {
+	comparison: ReturnType<typeof getMonthlyComparison>
+}
+
+function ComparisonSection({ comparison }: ComparisonSectionProps) {
+	if (!comparison) return null
+	
+	const { latest, previous, isMonthly } = comparison
+	
+	const comparisons = [
+		{ 
+			label: 'Waga', 
+			current: latest.weight_kg, 
+			previous: previous.weight_kg, 
+			unit: 'kg',
+			icon: 'scale',
+			inverseGood: true // dla wagi spadek jest dobry
+		},
+		{ 
+			label: 'Tk. tłuszcz.', 
+			current: latest.body_fat_percent, 
+			previous: previous.body_fat_percent, 
+			unit: '%',
+			icon: 'body',
+			inverseGood: true
+		},
+		{ 
+			label: 'Klatka', 
+			current: latest.chest_cm, 
+			previous: previous.chest_cm, 
+			unit: 'cm',
+			icon: 'fitness',
+			inverseGood: false // dla obwodów wzrost jest dobry
+		},
+		{ 
+			label: 'Talia', 
+			current: latest.waist_cm, 
+			previous: previous.waist_cm, 
+			unit: 'cm',
+			icon: 'resize',
+			inverseGood: true // dla talii spadek jest dobry
+		},
+		{ 
+			label: 'Biodra', 
+			current: latest.hips_cm, 
+			previous: previous.hips_cm, 
+			unit: 'cm',
+			icon: 'ellipse',
+			inverseGood: true
+		},
+		{ 
+			label: 'Biceps L', 
+			current: latest.biceps_left_cm, 
+			previous: previous.biceps_left_cm, 
+			unit: 'cm',
+			icon: 'barbell',
+			inverseGood: false
+		},
+		{ 
+			label: 'Biceps P', 
+			current: latest.biceps_right_cm, 
+			previous: previous.biceps_right_cm, 
+			unit: 'cm',
+			icon: 'barbell',
+			inverseGood: false
+		},
+		{ 
+			label: 'Udo L', 
+			current: latest.thigh_left_cm, 
+			previous: previous.thigh_left_cm, 
+			unit: 'cm',
+			icon: 'walk',
+			inverseGood: false
+		},
+		{ 
+			label: 'Udo P', 
+			current: latest.thigh_right_cm, 
+			previous: previous.thigh_right_cm, 
+			unit: 'cm',
+			icon: 'walk',
+			inverseGood: false
+		},
+	].filter(c => c.current !== undefined && c.current !== null && c.previous !== undefined && c.previous !== null)
+	
+	if (comparisons.length === 0) return null
+	
+	return (
+		<View style={styles.comparisonSection}>
+			<View style={styles.comparisonHeader}>
+				<Ionicons name="trending-up" size={20} color={colors.primary} />
+				<Text style={styles.sectionTitle}>
+					{isMonthly ? 'Porównanie miesięczne' : 'Porównanie z początkiem'}
+				</Text>
+			</View>
+			<Text style={styles.comparisonPeriod}>
+				{formatShortDate(previous.measurement_date)} → {formatShortDate(latest.measurement_date)}
+			</Text>
+			
+			<View style={styles.comparisonGrid}>
+				{comparisons.map((item, index) => {
+					const diff = (item.current as number) - (item.previous as number)
+					const isGood = item.inverseGood ? diff < 0 : diff > 0
+					const isNeutral = diff === 0
+					
+					return (
+						<View key={index} style={styles.comparisonCard}>
+							<Text style={styles.comparisonLabel}>{item.label}</Text>
+							<Text style={styles.comparisonValue}>
+								{item.current}{item.unit}
+							</Text>
+							<View style={[
+								styles.comparisonChange,
+								isGood && styles.comparisonChangeGood,
+								!isGood && !isNeutral && styles.comparisonChangeBad,
+							]}>
+								<Ionicons 
+									name={diff > 0 ? 'arrow-up' : diff < 0 ? 'arrow-down' : 'remove'} 
+									size={12} 
+									color={isNeutral ? colors.textSecondary : isGood ? colors.success : colors.error} 
+								/>
+								<Text style={[
+									styles.comparisonChangeText,
+									isGood && styles.comparisonChangeTextGood,
+									!isGood && !isNeutral && styles.comparisonChangeTextBad,
+								]}>
+									{Math.abs(diff).toFixed(1)}{item.unit}
+								</Text>
+							</View>
+						</View>
+					)
+				})}
+			</View>
 		</View>
 	)
 }
@@ -88,20 +270,24 @@ interface MeasurementCardProps {
 }
 
 function MeasurementCard({ measurement, onDelete }: MeasurementCardProps) {
-	const formatDate = (dateStr: string) => {
-		return new Date(dateStr).toLocaleDateString('pl-PL', {
-			day: 'numeric',
-			month: 'long',
-			year: 'numeric',
-		})
-	}
-
 	const handleLongPress = () => {
 		Alert.alert('Usuń pomiar', 'Czy na pewno chcesz usunąć ten pomiar?', [
 			{ text: 'Anuluj', style: 'cancel' },
 			{ text: 'Usuń', style: 'destructive', onPress: onDelete },
 		])
 	}
+
+	const items = [
+		{ icon: 'scale-outline', label: null, value: measurement.weight_kg, unit: 'kg' },
+		{ icon: 'body-outline', label: null, value: measurement.body_fat_percent, unit: '%' },
+		{ icon: null, label: 'Klatka', value: measurement.chest_cm, unit: 'cm' },
+		{ icon: null, label: 'Talia', value: measurement.waist_cm, unit: 'cm' },
+		{ icon: null, label: 'Biodra', value: measurement.hips_cm, unit: 'cm' },
+		{ icon: null, label: 'Biceps L', value: measurement.biceps_left_cm, unit: 'cm' },
+		{ icon: null, label: 'Biceps P', value: measurement.biceps_right_cm, unit: 'cm' },
+		{ icon: null, label: 'Udo L', value: measurement.thigh_left_cm, unit: 'cm' },
+		{ icon: null, label: 'Udo P', value: measurement.thigh_right_cm, unit: 'cm' },
+	].filter(item => item.value !== undefined && item.value !== null)
 
 	return (
 		<TouchableOpacity style={styles.measurementCard} onLongPress={handleLongPress} activeOpacity={0.7}>
@@ -113,60 +299,16 @@ function MeasurementCard({ measurement, onDelete }: MeasurementCardProps) {
 			</View>
 
 			<View style={styles.measurementGrid}>
-				{measurement.weight_kg && (
-					<View style={styles.measurementItem}>
-						<Ionicons name="scale-outline" size={16} color={colors.primary} />
-						<Text style={styles.measurementValue}>{measurement.weight_kg} kg</Text>
+				{items.map((item, index) => (
+					<View key={index} style={styles.measurementItem}>
+						{item.icon ? (
+							<Ionicons name={item.icon as any} size={16} color={colors.primary} />
+						) : (
+							<Text style={styles.measurementLabel}>{item.label}</Text>
+						)}
+						<Text style={styles.measurementValue}>{item.value} {item.unit}</Text>
 					</View>
-				)}
-				{measurement.body_fat_percent && (
-					<View style={styles.measurementItem}>
-						<Ionicons name="body-outline" size={16} color={colors.warning} />
-						<Text style={styles.measurementValue}>{measurement.body_fat_percent}%</Text>
-					</View>
-				)}
-				{measurement.chest_cm && (
-					<View style={styles.measurementItem}>
-						<Text style={styles.measurementLabel}>Klatka</Text>
-						<Text style={styles.measurementValue}>{measurement.chest_cm} cm</Text>
-					</View>
-				)}
-				{measurement.waist_cm && (
-					<View style={styles.measurementItem}>
-						<Text style={styles.measurementLabel}>Talia</Text>
-						<Text style={styles.measurementValue}>{measurement.waist_cm} cm</Text>
-					</View>
-				)}
-				{measurement.hips_cm && (
-					<View style={styles.measurementItem}>
-						<Text style={styles.measurementLabel}>Biodra</Text>
-						<Text style={styles.measurementValue}>{measurement.hips_cm} cm</Text>
-					</View>
-				)}
-				{measurement.biceps_left_cm && (
-					<View style={styles.measurementItem}>
-						<Text style={styles.measurementLabel}>Biceps L</Text>
-						<Text style={styles.measurementValue}>{measurement.biceps_left_cm} cm</Text>
-					</View>
-				)}
-				{measurement.biceps_right_cm && (
-					<View style={styles.measurementItem}>
-						<Text style={styles.measurementLabel}>Biceps P</Text>
-						<Text style={styles.measurementValue}>{measurement.biceps_right_cm} cm</Text>
-					</View>
-				)}
-				{measurement.thigh_left_cm && (
-					<View style={styles.measurementItem}>
-						<Text style={styles.measurementLabel}>Udo L</Text>
-						<Text style={styles.measurementValue}>{measurement.thigh_left_cm} cm</Text>
-					</View>
-				)}
-				{measurement.thigh_right_cm && (
-					<View style={styles.measurementItem}>
-						<Text style={styles.measurementLabel}>Udo P</Text>
-						<Text style={styles.measurementValue}>{measurement.thigh_right_cm} cm</Text>
-					</View>
-				)}
+				))}
 			</View>
 
 			{measurement.notes && <Text style={styles.measurementNotes}>{measurement.notes}</Text>}
@@ -393,11 +535,14 @@ export default function ClientProgressScreen() {
 	const userId = currentUser?.id || ''
 
 	const { data: measurements = [], isLoading, refetch, isRefetching } = useMeasurements(userId)
-	const { data: stats } = useMeasurementStats(userId)
 	const addMeasurement = useAddMeasurement()
 	const deleteMeasurement = useDeleteMeasurement()
 
 	const [showAddModal, setShowAddModal] = useState(false)
+
+	// Obliczenia
+	const daysSinceLastMeasurement = useMemo(() => getDaysSinceLastMeasurement(measurements), [measurements])
+	const comparison = useMemo(() => getMonthlyComparison(measurements), [measurements])
 
 	const handleAddMeasurement = useCallback(
 		async (input: MeasurementInput) => {
@@ -445,23 +590,14 @@ export default function ClientProgressScreen() {
 					<Text style={styles.headerTitle}>Twoje postępy 📊</Text>
 				</View>
 
-				{/* Statystyki */}
-				{stats && stats.measurementCount > 0 && (
-					<View style={styles.statsSection}>
-						<Text style={styles.sectionTitle}>Podsumowanie</Text>
-						<View style={styles.statsRow}>
-							<StatCard icon="scale" label="Waga" value={stats.currentWeight} change={stats.weightChange} unit=" kg" />
-							<StatCard
-								icon="body"
-								label="Tk. tłuszcz."
-								value={stats.currentBodyFat}
-								change={stats.bodyFatChange}
-								unit="%"
-							/>
-							<StatCard icon="calendar" label="Pomiary" value={stats.measurementCount} />
-						</View>
-					</View>
-				)}
+				{/* Przypomnienie */}
+				<ReminderBanner 
+					daysSince={daysSinceLastMeasurement} 
+					onAddMeasurement={() => setShowAddModal(true)} 
+				/>
+
+				{/* Porównanie miesięczne */}
+				<ComparisonSection comparison={comparison} />
 
 				{/* Lista pomiarów */}
 				<View style={styles.measurementsSection}>
@@ -540,15 +676,115 @@ const styles = StyleSheet.create({
 		fontWeight: 'bold',
 		color: colors.textPrimary,
 	},
-	statsSection: {
-		paddingHorizontal: 16,
-		marginBottom: 24,
+	// Reminder
+	reminderBanner: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		justifyContent: 'space-between',
+		backgroundColor: colors.surface,
+		marginHorizontal: 16,
+		marginBottom: 16,
+		padding: 14,
+		borderRadius: 12,
+		borderWidth: 1,
+		borderColor: colors.primary + '40',
 	},
+	reminderBannerUrgent: {
+		borderColor: colors.warning,
+		backgroundColor: colors.warning + '10',
+	},
+	reminderContent: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		flex: 1,
+		gap: 12,
+	},
+	reminderText: {
+		flex: 1,
+		fontSize: 14,
+		color: colors.textPrimary,
+		fontWeight: '500',
+	},
+	reminderButton: {
+		width: 36,
+		height: 36,
+		borderRadius: 18,
+		backgroundColor: colors.primary,
+		justifyContent: 'center',
+		alignItems: 'center',
+	},
+	// Comparison
+	comparisonSection: {
+		marginHorizontal: 16,
+		marginBottom: 20,
+		backgroundColor: colors.surface,
+		borderRadius: 12,
+		padding: 16,
+	},
+	comparisonHeader: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		gap: 8,
+		marginBottom: 4,
+	},
+	comparisonPeriod: {
+		fontSize: 12,
+		color: colors.textSecondary,
+		marginBottom: 14,
+	},
+	comparisonGrid: {
+		flexDirection: 'row',
+		flexWrap: 'wrap',
+		gap: 10,
+	},
+	comparisonCard: {
+		width: '30%',
+		backgroundColor: colors.background,
+		borderRadius: 10,
+		padding: 10,
+		alignItems: 'center',
+	},
+	comparisonLabel: {
+		fontSize: 11,
+		color: colors.textSecondary,
+		marginBottom: 4,
+	},
+	comparisonValue: {
+		fontSize: 16,
+		fontWeight: '700',
+		color: colors.textPrimary,
+	},
+	comparisonChange: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		marginTop: 6,
+		paddingHorizontal: 6,
+		paddingVertical: 2,
+		borderRadius: 4,
+		backgroundColor: colors.surface,
+		gap: 2,
+	},
+	comparisonChangeGood: {
+		backgroundColor: colors.success + '20',
+	},
+	comparisonChangeBad: {
+		backgroundColor: colors.error + '20',
+	},
+	comparisonChangeText: {
+		fontSize: 11,
+		color: colors.textSecondary,
+	},
+	comparisonChangeTextGood: {
+		color: colors.success,
+	},
+	comparisonChangeTextBad: {
+		color: colors.error,
+	},
+	// Section
 	sectionTitle: {
 		fontSize: 16,
 		fontWeight: '600',
 		color: colors.textPrimary,
-		marginBottom: 12,
 	},
 	sectionHeader: {
 		flexDirection: 'row',
@@ -556,54 +792,7 @@ const styles = StyleSheet.create({
 		justifyContent: 'space-between',
 		marginBottom: 12,
 	},
-	statsRow: {
-		flexDirection: 'row',
-		gap: 12,
-	},
-	statCard: {
-		flex: 1,
-		backgroundColor: colors.surface,
-		borderRadius: 12,
-		padding: 14,
-		alignItems: 'center',
-	},
-	statValue: {
-		fontSize: 20,
-		fontWeight: 'bold',
-		color: colors.textPrimary,
-		marginTop: 8,
-	},
-	statLabel: {
-		fontSize: 11,
-		color: colors.textSecondary,
-		marginTop: 4,
-	},
-	changeBadge: {
-		flexDirection: 'row',
-		alignItems: 'center',
-		backgroundColor: colors.background,
-		paddingHorizontal: 6,
-		paddingVertical: 2,
-		borderRadius: 4,
-		marginTop: 6,
-		gap: 2,
-	},
-	changeBadgePositive: {
-		backgroundColor: colors.error + '20',
-	},
-	changeBadgeNegative: {
-		backgroundColor: colors.success + '20',
-	},
-	changeText: {
-		fontSize: 11,
-		color: colors.textSecondary,
-	},
-	changeTextPositive: {
-		color: colors.error,
-	},
-	changeTextNegative: {
-		color: colors.success,
-	},
+	// Measurements
 	measurementsSection: {
 		paddingHorizontal: 16,
 	},
@@ -661,6 +850,7 @@ const styles = StyleSheet.create({
 		fontStyle: 'italic',
 		marginTop: 10,
 	},
+	// Empty
 	emptyState: {
 		alignItems: 'center',
 		paddingVertical: 60,
@@ -708,7 +898,7 @@ const styles = StyleSheet.create({
 		shadowOpacity: 0.25,
 		shadowRadius: 4,
 	},
-	// Modal styles
+	// Modal
 	modalContainer: {
 		flex: 1,
 		backgroundColor: colors.background,

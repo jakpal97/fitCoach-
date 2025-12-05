@@ -19,12 +19,15 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native'
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
+import { useQuery } from '@tanstack/react-query'
 import {
 	usePlanDetails,
 	DAY_NAMES,
+	getCompletedWorkouts,
 	type WorkoutDayWithExercises,
 	type WorkoutExerciseWithDetails,
 } from '../../api/services/trainingPlans'
+import { useAuth } from '../../context/AuthContext'
 import { colors } from '../../theme/colors'
 import type { AppStackParamList } from '../../navigation/AppNavigator'
 
@@ -184,19 +187,32 @@ function ExerciseItem({ exercise, index, onPress }: ExerciseItemProps) {
 interface WorkoutDayCardProps {
 	day: WorkoutDayWithExercises
 	isToday: boolean
+	isCompleted: boolean
 	onExercisePress: (exercise: WorkoutExerciseWithDetails) => void
 	onStartWorkout: () => void
 }
 
-function WorkoutDayCard({ day, isToday, onExercisePress, onStartWorkout }: WorkoutDayCardProps) {
-	const [isExpanded, setIsExpanded] = useState(isToday)
+function WorkoutDayCard({ day, isToday, isCompleted, onExercisePress, onStartWorkout }: WorkoutDayCardProps) {
+	const [isExpanded, setIsExpanded] = useState(isToday || isCompleted)
 	const dayName = DAY_NAMES[day.day_of_week]
 
+	// Określ styl karty
+	const cardStyle = [
+		styles.dayCard,
+		isCompleted && styles.dayCardCompleted,
+		isToday && !isCompleted && styles.dayCardToday,
+	]
+
 	return (
-		<View style={[styles.dayCard, isToday && styles.dayCardToday]}>
+		<View style={cardStyle}>
 			<TouchableOpacity style={styles.dayHeader} onPress={() => setIsExpanded(!isExpanded)} activeOpacity={0.7}>
 				<View style={styles.dayHeaderLeft}>
-					<View style={[styles.dayBadge, day.is_rest_day && styles.restDayBadge, isToday && styles.todayBadge]}>
+					<View style={[
+						styles.dayBadge, 
+						day.is_rest_day && styles.restDayBadge, 
+						isToday && !isCompleted && styles.todayBadge,
+						isCompleted && styles.completedBadge
+					]}>
 						<Text style={styles.dayBadgeText}>{dayName.slice(0, 3).toUpperCase()}</Text>
 					</View>
 					<View>
@@ -211,7 +227,15 @@ function WorkoutDayCard({ day, isToday, onExercisePress, onStartWorkout }: Worko
 						)}
 					</View>
 				</View>
-				<Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={20} color={colors.textSecondary} />
+				<View style={styles.dayHeaderRight}>
+					{isCompleted && !day.is_rest_day && (
+						<View style={styles.completedBadgeSmall}>
+							<Ionicons name="checkmark" size={12} color={colors.success} />
+							<Text style={styles.completedBadgeText}>UKOŃCZONY</Text>
+						</View>
+					)}
+					<Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={20} color={colors.textSecondary} />
+				</View>
 			</TouchableOpacity>
 
 			{isExpanded && !day.is_rest_day && day.workout_exercises && (
@@ -228,12 +252,17 @@ function WorkoutDayCard({ day, isToday, onExercisePress, onStartWorkout }: Worko
 									onPress={() => onExercisePress(exercise)}
 								/>
 							))}
-							{isToday && (
+							{isCompleted ? (
+								<View style={styles.completedButton}>
+									<Ionicons name="checkmark-circle" size={18} color={colors.success} />
+									<Text style={styles.completedButtonText}>Trening ukończony</Text>
+								</View>
+							) : isToday ? (
 								<TouchableOpacity style={styles.startWorkoutButton} onPress={onStartWorkout}>
 									<Ionicons name="play" size={18} color={colors.textOnPrimary} />
 									<Text style={styles.startWorkoutButtonText}>Rozpocznij trening</Text>
 								</TouchableOpacity>
-							)}
+							) : null}
 						</>
 					)}
 				</View>
@@ -258,8 +287,21 @@ export default function ClientPlanViewScreen() {
 	const navigation = useNavigation<NativeStackNavigationProp<AppStackParamList>>()
 	const route = useRoute<ClientPlanViewRouteProp>()
 	const { planId } = route.params
+	const { currentUser } = useAuth()
 
 	const { data: plan, isLoading, refetch, isRefetching } = usePlanDetails(planId)
+
+	// Pobierz ukończone treningi użytkownika (używamy currentUser.id bo tak zapisujemy w completed_workouts)
+	const { data: completedWorkouts = [] } = useQuery({
+		queryKey: ['completed-workouts', currentUser?.id],
+		queryFn: () => getCompletedWorkouts(currentUser!.id),
+		enabled: !!currentUser?.id,
+	})
+
+	// Zbiór ID ukończonych dni treningowych
+	const completedDayIds = useMemo(() => {
+		return new Set(completedWorkouts.map(w => w.workout_day_id))
+	}, [completedWorkouts])
 
 	const [selectedExercise, setSelectedExercise] = useState<WorkoutExerciseWithDetails | null>(null)
 	const [showExerciseModal, setShowExerciseModal] = useState(false)
@@ -398,6 +440,7 @@ export default function ClientPlanViewScreen() {
 								key={day.id}
 								day={day}
 								isToday={day.day_of_week === todayDayOfWeek}
+								isCompleted={completedDayIds.has(day.id)}
 								onExercisePress={handleExercisePress}
 								onStartWorkout={() => handleStartWorkout(day.id)}
 							/>
@@ -558,10 +601,14 @@ const styles = StyleSheet.create({
 		borderRadius: 12,
 		marginBottom: 10,
 		overflow: 'hidden',
+		borderWidth: 2,
+		borderColor: 'transparent',
 	},
 	dayCardToday: {
 		borderColor: colors.primary,
-		borderWidth: 2,
+	},
+	dayCardCompleted: {
+		borderColor: colors.success,
 	},
 	dayHeader: {
 		flexDirection: 'row',
@@ -573,6 +620,12 @@ const styles = StyleSheet.create({
 		flexDirection: 'row',
 		alignItems: 'center',
 		gap: 12,
+		flex: 1,
+	},
+	dayHeaderRight: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		gap: 8,
 	},
 	dayBadge: {
 		backgroundColor: colors.background,
@@ -585,6 +638,23 @@ const styles = StyleSheet.create({
 	},
 	todayBadge: {
 		backgroundColor: colors.primary,
+	},
+	completedBadge: {
+		backgroundColor: colors.success,
+	},
+	completedBadgeSmall: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		gap: 4,
+		backgroundColor: colors.success + '20',
+		paddingHorizontal: 8,
+		paddingVertical: 4,
+		borderRadius: 12,
+	},
+	completedBadgeText: {
+		fontSize: 10,
+		fontWeight: '700',
+		color: colors.success,
 	},
 	dayBadgeText: {
 		fontSize: 11,
@@ -666,6 +736,23 @@ const styles = StyleSheet.create({
 	},
 	startWorkoutButtonText: {
 		color: colors.textOnPrimary,
+		fontWeight: '600',
+		fontSize: 15,
+	},
+	completedButton: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		justifyContent: 'center',
+		backgroundColor: colors.success + '20',
+		borderWidth: 1,
+		borderColor: colors.success,
+		paddingVertical: 14,
+		borderRadius: 10,
+		marginTop: 12,
+		gap: 8,
+	},
+	completedButtonText: {
+		color: colors.success,
 		fontWeight: '600',
 		fontSize: 15,
 	},
