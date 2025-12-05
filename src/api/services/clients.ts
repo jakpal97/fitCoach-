@@ -97,19 +97,36 @@ export const clientKeys = {
  * Pobiera listę klientów przypisanych do trenera
  */
 export async function getClientsByTrainer(trainerId: string): Promise<ClientWithData[]> {
-	const { data, error } = await supabase
+	// Pobierz profile klientów
+	const { data: profiles, error: profilesError } = await supabase
 		.from('profiles')
-		.select(`
-			*,
-			client_data (*)
-		`)
+		.select('*')
 		.eq('trainer_id', trainerId)
 		.eq('role', 'client')
 		.eq('is_active', true)
 		.order('last_name', { ascending: true })
 
-	if (error) throw handleSupabaseError(error)
-	return data as ClientWithData[]
+	if (profilesError) throw handleSupabaseError(profilesError)
+	if (!profiles || profiles.length === 0) return []
+
+	// Pobierz client_data dla wszystkich klientów
+	const userIds = profiles.map(p => p.user_id)
+	const { data: clientDataList, error: clientDataError } = await supabase
+		.from('client_data')
+		.select('*')
+		.in('user_id', userIds)
+
+	if (clientDataError) {
+		console.warn('Błąd pobierania client_data:', clientDataError)
+	}
+
+	// Połącz dane
+	const clientsWithData: ClientWithData[] = profiles.map(profile => ({
+		...profile,
+		client_data: clientDataList?.find(cd => cd.user_id === profile.user_id) || null,
+	}))
+
+	return clientsWithData
 }
 
 /**
@@ -144,12 +161,16 @@ export async function getClientsWithStats(trainerId: string): Promise<ClientWith
 				.single()
 
 			// Aktywny plan
-			const { data: activePlan } = await supabase
+			const { data: activePlan, error: planError } = await supabase
 				.from('training_plans')
 				.select('*')
 				.eq('client_id', client.id)
 				.eq('is_active', true)
-				.single()
+				.maybeSingle()
+
+			if (planError) {
+				console.warn('Błąd pobierania active_plan dla klienta:', client.id, planError)
+			}
 
 			return {
 				...client,
@@ -168,13 +189,10 @@ export async function getClientsWithStats(trainerId: string): Promise<ClientWith
  * Pobiera szczegóły klienta z pomiarami i statystykami
  */
 export async function getClientDetails(clientId: string): Promise<ClientFullDetails | null> {
-	// Pobierz profil i dane klienta
+	// Pobierz profil
 	const { data: profile, error } = await supabase
 		.from('profiles')
-		.select(`
-			*,
-			client_data (*)
-		`)
+		.select('*')
 		.eq('id', clientId)
 		.single()
 
@@ -183,7 +201,17 @@ export async function getClientDetails(clientId: string): Promise<ClientFullDeta
 		throw handleSupabaseError(error)
 	}
 
-	const clientWithData = profile as ClientWithData
+	// Pobierz client_data osobno
+	const { data: clientDataResult } = await supabase
+		.from('client_data')
+		.select('*')
+		.eq('user_id', profile.user_id)
+		.maybeSingle()
+
+	const clientWithData: ClientWithData = {
+		...profile,
+		client_data: clientDataResult || null,
+	}
 
 	// Pobierz pomiary (ostatnie 10)
 	const { data: measurements } = await supabase
@@ -199,7 +227,7 @@ export async function getClientDetails(clientId: string): Promise<ClientFullDeta
 		.select('*')
 		.eq('client_id', clientId)
 		.eq('is_active', true)
-		.single()
+		.maybeSingle()
 
 	// Pobierz ostatnie treningi (5)
 	const { data: recentWorkouts } = await supabase

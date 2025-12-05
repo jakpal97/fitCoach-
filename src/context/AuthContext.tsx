@@ -58,7 +58,13 @@ interface AuthActions {
   /** Logowanie */
   login: (email: string, password: string) => Promise<AuthResponse>;
   /** Rejestracja */
-  register: (data: SignUpData) => Promise<AuthResponse>;
+  register: (
+    email: string,
+    password: string,
+    firstName: string,
+    lastName: string,
+    invitationCode?: string
+  ) => Promise<AuthResponse>;
   /** Wylogowanie */
   logout: () => Promise<void>;
   /** Usunięcie konta */
@@ -228,11 +234,24 @@ export function AuthProvider({ children }: AuthProviderProps) {
   /**
    * Rejestracja
    */
-  const register = useCallback(async (data: SignUpData): Promise<AuthResponse> => {
+  const register = useCallback(async (
+    email: string,
+    password: string,
+    firstName: string,
+    lastName: string,
+    invitationCode?: string
+  ): Promise<AuthResponse> => {
     setIsLoading(true);
     
     try {
-      const result = await authSignUp(data);
+      const result = await authSignUp({
+        email,
+        password,
+        firstName,
+        lastName,
+        role: 'client',
+        invitationCode,
+      });
 
       if (result.success && result.user) {
         setCurrentUser(result.user);

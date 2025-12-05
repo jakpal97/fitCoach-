@@ -87,14 +87,18 @@ export default function RootNavigator() {
 		return <LoadingScreen />
 	}
 
+	// Sprawdź czy klient potrzebuje onboardingu
+	const needsOnboarding =
+		isAuthenticated &&
+		profile?.role === 'client' &&
+		(!clientData || !clientData.accepted_terms || !clientData.accepted_privacy || !clientData.onboarding_completed)
+
 	return (
 		<NavigationContainer theme={navigationTheme}>
 			{!isAuthenticated ? (
 				// Niezalogowany → pokaż AuthNavigator
 				<AuthNavigator />
-			) : profile?.role === 'client' &&
-			  clientData &&
-			  (!clientData.accepted_terms || !clientData.accepted_privacy || !clientData.onboarding_completed) ? (
+			) : needsOnboarding ? (
 				// Zalogowany klient ale nie ukończył onboardingu
 				<OnboardingWrapper />
 			) : (

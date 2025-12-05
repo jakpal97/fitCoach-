@@ -15,6 +15,13 @@ import ExerciseLibraryScreen from '../screens/trainer/ExerciseLibraryScreen'
 import AddExerciseScreen from '../screens/trainer/AddExerciseScreen'
 import ExerciseDetailScreen from '../screens/trainer/ExerciseDetailScreen'
 import EditExerciseScreen from '../screens/trainer/EditExerciseScreen'
+import TrainerDashboardScreen from '../screens/trainer/TrainerDashboardScreen'
+import ClientsListScreen from '../screens/trainer/ClientsListScreen'
+import ClientDetailScreen from '../screens/trainer/ClientDetailScreen'
+import AddClientScreen from '../screens/trainer/AddClientScreen'
+import CreatePlanScreen from '../screens/trainer/CreatePlanScreen'
+import PlanDetailScreen from '../screens/trainer/PlanDetailScreen'
+import ChatScreen from '../screens/shared/ChatScreen'
 
 // ============================================
 // PLACEHOLDER SCREENS (do zastąpienia później)
@@ -58,26 +65,10 @@ function ClientSettingsScreen() {
 	)
 }
 
-// Trainer Screens
-function TrainerDashboardScreen() {
-	return (
-		<View style={{ flex: 1, backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }}>
-			<Text style={{ color: colors.textPrimary, fontSize: 24 }}>📋 Dashboard Trenera</Text>
-			<Text style={{ color: colors.textSecondary, marginTop: 8 }}>Ekran w budowie...</Text>
-		</View>
-	)
-}
-
+// TrainerDashboardScreen - zaimportowany z ../screens/trainer/TrainerDashboardScreen
 // TrainerExerciseLibraryScreen - zaimportowany z ../screens/trainer/ExerciseLibraryScreen
 
-function TrainerClientsScreen() {
-	return (
-		<View style={{ flex: 1, backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }}>
-			<Text style={{ color: colors.textPrimary, fontSize: 24 }}>👥 Klienci</Text>
-			<Text style={{ color: colors.textSecondary, marginTop: 8 }}>Ekran w budowie...</Text>
-		</View>
-	)
-}
+// TrainerClientsScreen - zaimportowany z ../screens/trainer/ClientsListScreen
 
 function TrainerSettingsScreen() {
 	const { logout, profile } = useAuth()
@@ -125,8 +116,10 @@ export type AppStackParamList = {
 	AddExercise: undefined
 	EditExercise: { exerciseId: string }
 	ExerciseDetail: { exerciseId: string }
+	AddClient: undefined
 	ClientDetail: { clientId: string }
 	CreatePlan: { clientId: string }
+	PlanDetail: { planId: string }
 	Chat: { recipientId: string }
 }
 
@@ -238,7 +231,7 @@ function TrainerTabNavigator() {
 			/>
 			<TrainerTab.Screen
 				name="Clients"
-				component={TrainerClientsScreen}
+				component={ClientsListScreen}
 				options={{
 					tabBarLabel: 'Klienci',
 					tabBarIcon: ({ color, size }) => (
@@ -303,6 +296,43 @@ export default function AppNavigator() {
 				options={{
 					presentation: 'modal',
 					animation: 'slide_from_bottom',
+				}}
+			/>
+			<AppStack.Screen 
+				name="ClientDetail" 
+				component={ClientDetailScreen}
+				options={{
+					animation: 'slide_from_right',
+				}}
+			/>
+			<AppStack.Screen 
+				name="AddClient" 
+				component={AddClientScreen}
+				options={{
+					presentation: 'modal',
+					animation: 'slide_from_bottom',
+				}}
+			/>
+			<AppStack.Screen 
+				name="CreatePlan" 
+				component={CreatePlanScreen}
+				options={{
+					presentation: 'modal',
+					animation: 'slide_from_bottom',
+				}}
+			/>
+			<AppStack.Screen 
+				name="PlanDetail" 
+				component={PlanDetailScreen}
+				options={{
+					animation: 'slide_from_right',
+				}}
+			/>
+			<AppStack.Screen 
+				name="Chat" 
+				component={ChatScreen}
+				options={{
+					animation: 'slide_from_right',
 				}}
 			/>
 		</AppStack.Navigator>

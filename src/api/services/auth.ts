@@ -34,6 +34,8 @@ export interface SignUpData {
   firstName: string;
   lastName: string;
   role?: UserRole;
+  /** Kod zaproszenia od trenera (opcjonalny) */
+  invitationCode?: string;
 }
 
 /**
@@ -163,8 +165,72 @@ export async function signUp(data: SignUpData): Promise<AuthResponse> {
 
     // Profil zostanie utworzony automatycznie przez trigger w bazie
     // Poczekaj chwilę i pobierz profil
-    await new Promise(resolve => setTimeout(resolve, 500));
-    const profile = await getProfile(authData.user.id);
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    let profile = await getProfile(authData.user.id);
+
+    // Jeśli trigger nie utworzył profilu, utwórz ręcznie
+    if (!profile) {
+      console.log('Trigger nie utworzył profilu, tworzę ręcznie...');
+      
+      const { data: newProfile, error: profileError } = await supabase
+        .from('profiles')
+        .insert({
+          user_id: authData.user.id,
+          email: data.email.trim().toLowerCase(),
+          first_name: data.firstName,
+          last_name: data.lastName,
+          role: data.role || 'client',
+        })
+        .select()
+        .single();
+
+      if (profileError) {
+        console.error('Błąd tworzenia profilu:', profileError);
+      } else {
+        profile = newProfile as Profile;
+      }
+
+      // Jeśli klient, utwórz też client_data
+      if ((data.role || 'client') === 'client') {
+        const { error: clientDataError } = await supabase
+          .from('client_data')
+          .insert({
+            user_id: authData.user.id,
+          });
+
+        if (clientDataError) {
+          console.error('Błąd tworzenia client_data:', clientDataError);
+        }
+      }
+    }
+
+    // Jeśli podano kod zaproszenia, spróbuj go zaakceptować
+    if (data.invitationCode && profile) {
+      try {
+        const { data: acceptResult, error: acceptError } = await supabase.rpc('accept_invitation', {
+          p_invitation_code: data.invitationCode.toUpperCase(),
+          p_client_id: profile.id,
+        });
+        
+        if (acceptError) {
+          console.warn('Błąd akceptacji zaproszenia:', acceptError);
+        } else if (acceptResult) {
+          // Odśwież profil żeby mieć trainer_id
+          const updatedProfile = await getProfile(authData.user.id);
+          return {
+            success: true,
+            user: {
+              id: authData.user.id,
+              email: authData.user.email || '',
+            },
+            profile: updatedProfile,
+            error: null,
+          };
+        }
+      } catch (invErr) {
+        console.warn('Wyjątek przy akceptacji zaproszenia:', invErr);
+      }
+    }
 
     return {
       success: true,
@@ -250,14 +316,14 @@ export async function getProfile(userId: string): Promise<Profile | null> {
       .from('profiles')
       .select('*')
       .eq('user_id', userId)
-      .single();
+      .maybeSingle();
 
     if (error) {
       console.error('Błąd pobierania profilu:', error.message);
       return null;
     }
 
-    return data as Profile;
+    return data as Profile | null;
   } catch (err) {
     console.error('Błąd pobierania profilu:', err);
     return null;
@@ -276,14 +342,14 @@ export async function getClientData(userId: string): Promise<ClientData | null> 
       .from('client_data')
       .select('*')
       .eq('user_id', userId)
-      .single();
+      .maybeSingle();
 
     if (error) {
       console.error('Błąd pobierania danych klienta:', error.message);
       return null;
     }
 
-    return data as ClientData;
+    return data as ClientData | null;
   } catch (err) {
     console.error('Błąd pobierania danych klienta:', err);
     return null;

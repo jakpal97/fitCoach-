@@ -15,11 +15,12 @@ import {
 	KeyboardAvoidingView,
 	Platform,
 	ScrollView,
-	Alert,
 } from 'react-native'
 import { useForm, Controller } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
+import { useNavigation, type NavigationProp } from '@react-navigation/native'
+import type { AuthStackParamList } from '../../navigation/AuthNavigator'
 import { useAuth } from '../../context/AuthContext'
 import { colors } from '../../theme/colors'
 
@@ -39,6 +40,7 @@ type LoginFormData = z.infer<typeof loginSchema>
 // ============================================
 
 export default function LoginScreen() {
+	const navigation = useNavigation<NavigationProp<AuthStackParamList>>()
 	const { login } = useAuth()
 	const [isLoading, setIsLoading] = useState(false)
 	const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -260,16 +262,13 @@ export default function LoginScreen() {
 						</Text>
 					</TouchableOpacity>
 
-					{/* Link do rejestracji (opcjonalnie) */}
+					{/* Link do rejestracji */}
 					<View style={{ alignItems: 'center', marginTop: 24 }}>
 						<Text style={{ color: colors.textSecondary, fontSize: 14 }}>
-							Nie masz konta?{' '}
+							Masz kod zaproszenia?{' '}
 							<Text
 								style={{ color: colors.primary, fontWeight: '600' }}
-								onPress={() => {
-									// TODO: Nawigacja do rejestracji
-									Alert.alert('Info', 'Rejestracja dostępna wkrótce')
-								}}>
+								onPress={() => navigation.navigate('Register')}>
 								Zarejestruj się
 							</Text>
 						</Text>
