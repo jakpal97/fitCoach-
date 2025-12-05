@@ -5,15 +5,7 @@
  */
 
 import React from 'react'
-import {
-	View,
-	Text,
-	ScrollView,
-	TouchableOpacity,
-	StyleSheet,
-	ActivityIndicator,
-	Alert,
-} from 'react-native'
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator, Alert } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native'
@@ -95,7 +87,7 @@ export default function ClientDetailScreen() {
 
 	const handleSendMessage = () => {
 		if (client) {
-			navigation.navigate('Chat', { recipientId: client.user_id })
+			navigation.navigate('Chat', { recipientId: client.id })
 		}
 	}
 
@@ -209,24 +201,9 @@ export default function ClientDetailScreen() {
 				<View style={styles.section}>
 					<Text style={styles.sectionTitle}>Statystyki</Text>
 					<View style={styles.statsGrid}>
-						<StatCard
-							icon="fitness"
-							value={client.stats.total_workouts}
-							label="Treningów"
-							color={colors.success}
-						/>
-						<StatCard
-							icon="flame"
-							value={client.stats.streak_days}
-							label="Dni streak"
-							color={colors.warning}
-						/>
-						<StatCard
-							icon="calendar"
-							value={client.stats.workouts_this_week}
-							label="Ten tydzień"
-							color={colors.info}
-						/>
+						<StatCard icon="fitness" value={client.stats.total_workouts} label="Treningów" color={colors.success} />
+						<StatCard icon="flame" value={client.stats.streak_days} label="Dni streak" color={colors.warning} />
+						<StatCard icon="calendar" value={client.stats.workouts_this_week} label="Ten tydzień" color={colors.info} />
 						<StatCard
 							icon="trophy"
 							value={client.stats.workouts_this_month}
@@ -308,11 +285,7 @@ export default function ClientDetailScreen() {
 						</View>
 						<View style={styles.dataCard}>
 							<MeasurementRow label="Waga" value={latestMeasurement.weight_kg} unit="kg" />
-							<MeasurementRow
-								label="Tkanka tłuszczowa"
-								value={latestMeasurement.body_fat_percentage}
-								unit="%"
-							/>
+							<MeasurementRow label="Tkanka tłuszczowa" value={latestMeasurement.body_fat_percentage} unit="%" />
 							<MeasurementRow label="Obwód brzucha" value={latestMeasurement.waist_cm} unit="cm" />
 							<MeasurementRow label="Obwód klatki" value={latestMeasurement.chest_cm} unit="cm" />
 							<MeasurementRow label="Obwód ramienia" value={latestMeasurement.arm_cm} unit="cm" />
@@ -325,7 +298,7 @@ export default function ClientDetailScreen() {
 				{client.recent_workouts && client.recent_workouts.length > 0 && (
 					<View style={styles.section}>
 						<Text style={styles.sectionTitle}>Ostatnie treningi</Text>
-						{client.recent_workouts.slice(0, 5).map((workout) => (
+						{client.recent_workouts.slice(0, 5).map(workout => (
 							<View key={workout.id} style={styles.workoutRow}>
 								<View style={styles.workoutIcon}>
 									<Ionicons
@@ -360,9 +333,7 @@ export default function ClientDetailScreen() {
 								</View>
 								{workout.feeling_rating && (
 									<View style={styles.feelingBadge}>
-										<Text style={styles.feelingText}>
-											{'⭐'.repeat(workout.feeling_rating)}
-										</Text>
+										<Text style={styles.feelingText}>{'⭐'.repeat(workout.feeling_rating)}</Text>
 									</View>
 								)}
 							</View>
@@ -632,4 +603,3 @@ const styles = StyleSheet.create({
 		fontSize: 12,
 	},
 })
-

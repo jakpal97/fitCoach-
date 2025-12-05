@@ -67,9 +67,7 @@ function ExerciseItem({ exercise, index }: ExerciseItemProps) {
 						<Text style={styles.paramText}>{exercise.rest_seconds}s</Text>
 					</View>
 				</View>
-				{exercise.notes && (
-					<Text style={styles.exerciseNotes}>{exercise.notes}</Text>
-				)}
+				{exercise.notes && <Text style={styles.exerciseNotes}>{exercise.notes}</Text>}
 			</View>
 		</View>
 	)
@@ -89,32 +87,21 @@ function WorkoutDayCard({ day }: WorkoutDayCardProps) {
 
 	return (
 		<View style={styles.dayCard}>
-			<TouchableOpacity
-				style={styles.dayHeader}
-				onPress={() => setIsExpanded(!isExpanded)}
-				activeOpacity={0.7}>
+			<TouchableOpacity style={styles.dayHeader} onPress={() => setIsExpanded(!isExpanded)} activeOpacity={0.7}>
 				<View style={styles.dayHeaderLeft}>
 					<View style={[styles.dayBadge, day.is_rest_day && styles.restDayBadge]}>
 						<Text style={styles.dayBadgeText}>{dayName.slice(0, 3)}</Text>
 					</View>
 					<View>
-						<Text style={styles.dayName}>
-							{day.name || dayName}
-						</Text>
+						<Text style={styles.dayName}>{day.name || dayName}</Text>
 						{day.is_rest_day ? (
 							<Text style={styles.daySubtitle}>Dzień odpoczynku</Text>
 						) : (
-							<Text style={styles.daySubtitle}>
-								{day.workout_exercises?.length || 0} ćwiczeń
-							</Text>
+							<Text style={styles.daySubtitle}>{day.workout_exercises?.length || 0} ćwiczeń</Text>
 						)}
 					</View>
 				</View>
-				<Ionicons
-					name={isExpanded ? 'chevron-up' : 'chevron-down'}
-					size={20}
-					color={colors.textSecondary}
-				/>
+				<Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={20} color={colors.textSecondary} />
 			</TouchableOpacity>
 
 			{isExpanded && !day.is_rest_day && day.workout_exercises && (
@@ -123,11 +110,7 @@ function WorkoutDayCard({ day }: WorkoutDayCardProps) {
 						<Text style={styles.noExercises}>Brak ćwiczeń</Text>
 					) : (
 						day.workout_exercises.map((exercise, index) => (
-							<ExerciseItem
-								key={exercise.id}
-								exercise={exercise}
-								index={index}
-							/>
+							<ExerciseItem key={exercise.id} exercise={exercise} index={index} />
 						))
 					)}
 				</View>
@@ -157,67 +140,50 @@ export default function PlanDetailScreen() {
 	// ============================================
 
 	const handleEdit = useCallback(() => {
-		// TODO: Nawigacja do ekranu edycji planu
-		Alert.alert(
-			'Edycja planu',
-			'Funkcja edycji planu będzie dostępna wkrótce. Na razie możesz usunąć plan i stworzyć nowy.',
-			[{ text: 'OK' }]
-		)
-	}, [])
+		navigation.navigate('EditPlan', { planId })
+	}, [navigation, planId])
 
 	const handleDelete = useCallback(() => {
-		Alert.alert(
-			'Usuń plan',
-			'Czy na pewno chcesz usunąć ten plan treningowy? Ta operacja jest nieodwracalna.',
-			[
-				{ text: 'Anuluj', style: 'cancel' },
-				{
-					text: 'Usuń',
-					style: 'destructive',
-					onPress: async () => {
-						setIsDeleting(true)
-						try {
-							await deletePlan.mutateAsync(planId)
-							Alert.alert('Sukces', 'Plan został usunięty', [
-								{ text: 'OK', onPress: () => navigation.goBack() },
-							])
-						} catch (error: any) {
-							Alert.alert('Błąd', error.message || 'Nie udało się usunąć planu')
-						} finally {
-							setIsDeleting(false)
-						}
-					},
+		Alert.alert('Usuń plan', 'Czy na pewno chcesz usunąć ten plan treningowy? Ta operacja jest nieodwracalna.', [
+			{ text: 'Anuluj', style: 'cancel' },
+			{
+				text: 'Usuń',
+				style: 'destructive',
+				onPress: async () => {
+					setIsDeleting(true)
+					try {
+						await deletePlan.mutateAsync(planId)
+						Alert.alert('Sukces', 'Plan został usunięty', [{ text: 'OK', onPress: () => navigation.goBack() }])
+					} catch (error: any) {
+						Alert.alert('Błąd', error.message || 'Nie udało się usunąć planu')
+					} finally {
+						setIsDeleting(false)
+					}
 				},
-			]
-		)
+			},
+		])
 	}, [planId, deletePlan, navigation])
 
 	const handleDuplicate = useCallback(() => {
-		Alert.alert(
-			'Duplikuj plan',
-			'Czy chcesz skopiować ten plan na następny tydzień?',
-			[
-				{ text: 'Anuluj', style: 'cancel' },
-				{
-					text: 'Duplikuj',
-					onPress: async () => {
-						setIsDuplicating(true)
-						try {
-							const newPlan = await duplicatePlan.mutateAsync(planId)
-							Alert.alert(
-								'Sukces',
-								`Plan został skopiowany na tydzień ${newPlan.week_start} - ${newPlan.week_end}`,
-								[{ text: 'OK' }]
-							)
-						} catch (error: any) {
-							Alert.alert('Błąd', error.message || 'Nie udało się zduplikować planu')
-						} finally {
-							setIsDuplicating(false)
-						}
-					},
+		Alert.alert('Duplikuj plan', 'Czy chcesz skopiować ten plan na następny tydzień?', [
+			{ text: 'Anuluj', style: 'cancel' },
+			{
+				text: 'Duplikuj',
+				onPress: async () => {
+					setIsDuplicating(true)
+					try {
+						const newPlan = await duplicatePlan.mutateAsync(planId)
+						Alert.alert('Sukces', `Plan został skopiowany na tydzień ${newPlan.week_start} - ${newPlan.week_end}`, [
+							{ text: 'OK' },
+						])
+					} catch (error: any) {
+						Alert.alert('Błąd', error.message || 'Nie udało się zduplikować planu')
+					} finally {
+						setIsDuplicating(false)
+					}
 				},
-			]
-		)
+			},
+		])
 	}, [planId, duplicatePlan])
 
 	// ============================================
@@ -252,9 +218,7 @@ export default function PlanDetailScreen() {
 				<View style={styles.errorContainer}>
 					<Ionicons name="alert-circle" size={64} color={colors.error} />
 					<Text style={styles.errorText}>Nie znaleziono planu</Text>
-					<TouchableOpacity
-						style={styles.backButton}
-						onPress={() => navigation.goBack()}>
+					<TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
 						<Text style={styles.backButtonText}>Wróć</Text>
 					</TouchableOpacity>
 				</View>
@@ -287,13 +251,7 @@ export default function PlanDetailScreen() {
 				style={styles.scrollView}
 				contentContainerStyle={styles.scrollContent}
 				showsVerticalScrollIndicator={false}
-				refreshControl={
-					<RefreshControl
-						refreshing={isRefetching}
-						onRefresh={refetch}
-						tintColor={colors.primary}
-					/>
-				}>
+				refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={colors.primary} />}>
 				{/* Info o planie */}
 				<View style={styles.planInfo}>
 					<View style={styles.weekInfo}>
@@ -322,21 +280,12 @@ export default function PlanDetailScreen() {
 
 				{/* Status */}
 				<View style={styles.statusRow}>
-					<View
-						style={[
-							styles.statusBadge,
-							plan.is_active ? styles.statusActive : styles.statusInactive,
-						]}>
-						<Text style={styles.statusText}>
-							{plan.is_active ? 'Aktywny' : 'Nieaktywny'}
-						</Text>
+					<View style={[styles.statusBadge, plan.is_active ? styles.statusActive : styles.statusInactive]}>
+						<Text style={styles.statusText}>{plan.is_active ? 'Aktywny' : 'Nieaktywny'}</Text>
 					</View>
 					<Text style={styles.exerciseCount}>
-						{plan.workout_days?.reduce(
-							(sum, day) => sum + (day.workout_exercises?.length || 0),
-							0
-						) || 0}{' '}
-						ćwiczeń łącznie
+						{plan.workout_days?.reduce((sum, day) => sum + (day.workout_exercises?.length || 0), 0) || 0} ćwiczeń
+						łącznie
 					</Text>
 				</View>
 
@@ -344,9 +293,7 @@ export default function PlanDetailScreen() {
 				<View style={styles.daysSection}>
 					<Text style={styles.sectionTitle}>Dni treningowe</Text>
 					{plan.workout_days && plan.workout_days.length > 0 ? (
-						plan.workout_days.map((day) => (
-							<WorkoutDayCard key={day.id} day={day} />
-						))
+						plan.workout_days.map(day => <WorkoutDayCard key={day.id} day={day} />)
 					) : (
 						<View style={styles.emptyDays}>
 							<Ionicons name="calendar-outline" size={48} color={colors.textTertiary} />
@@ -359,16 +306,11 @@ export default function PlanDetailScreen() {
 			{/* Bottom Actions */}
 			<View style={styles.bottomActions}>
 				<View style={styles.actionsRow}>
-					<TouchableOpacity
-						style={styles.editButton}
-						onPress={handleEdit}>
+					<TouchableOpacity style={styles.editButton} onPress={handleEdit}>
 						<Ionicons name="create-outline" size={20} color={colors.textPrimary} />
 						<Text style={styles.editButtonText}>Edytuj</Text>
 					</TouchableOpacity>
-					<TouchableOpacity
-						style={styles.duplicateButton}
-						onPress={handleDuplicate}
-						disabled={isDuplicating}>
+					<TouchableOpacity style={styles.duplicateButton} onPress={handleDuplicate} disabled={isDuplicating}>
 						{isDuplicating ? (
 							<ActivityIndicator size="small" color={colors.primary} />
 						) : (
@@ -682,4 +624,3 @@ const styles = StyleSheet.create({
 		fontSize: 15,
 	},
 })
-

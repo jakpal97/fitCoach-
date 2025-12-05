@@ -2,11 +2,12 @@
  * VideoPlayer - Odtwarzacz video dla ćwiczeń
  *
  * Komponent z custom kontrolkami do odtwarzania filmów instruktażowych.
+ * Używa nowego API expo-video.
  */
 
-import React, { useState, useRef, useCallback } from 'react'
-import { View, Text, TouchableOpacity, ActivityIndicator, StyleSheet, Dimensions, Image } from 'react-native'
-import { Video, ResizeMode, AVPlaybackStatus } from 'expo-av'
+import React, { useState, useCallback, useEffect } from 'react'
+import { View, Text, TouchableOpacity, ActivityIndicator, StyleSheet, Image } from 'react-native'
+import { useVideoPlayer, VideoView } from 'expo-video'
 import { Ionicons } from '@expo/vector-icons'
 import { colors } from '../../theme/colors'
 
@@ -47,7 +48,13 @@ export default function VideoPlayer({
 	onComplete,
 	onError,
 }: VideoPlayerProps) {
-	const videoRef = useRef<Video>(null)
+	// Inicjalizuj player z nowym API expo-video
+	const player = useVideoPlayer(videoUrl, (player) => {
+		player.loop = loop
+		if (autoplay) {
+			player.play()
+		}
+	})
 
 	// Stan
 	const [isLoading, setIsLoading] = useState(true)
@@ -55,49 +62,48 @@ export default function VideoPlayer({
 	const [hasError, setHasError] = useState(false)
 	const [errorMessage, setErrorMessage] = useState('')
 	const [showThumbnail, setShowThumbnail] = useState(!autoplay && !!thumbnailUrl)
-	const [duration, setDuration] = useState(0)
-	const [position, setPosition] = useState(0)
 	const [controlsVisible, setControlsVisible] = useState(true)
 
-	// Timer do ukrywania kontrolek
-	const controlsTimeout = useRef<NodeJS.Timeout | null>(null)
+	// Nasłuchuj zmian stanu playera
+	useEffect(() => {
+		if (!player) return
+
+		const subscription = player.addListener('statusChange', (status) => {
+			if (status.status === 'readyToPlay') {
+				setIsLoading(false)
+			} else if (status.status === 'error') {
+				setHasError(true)
+				setErrorMessage('Nie udało się załadować video')
+				onError?.('Błąd ładowania video')
+			}
+		})
+
+		const playingSubscription = player.addListener('playingChange', (isPlaying) => {
+			setIsPlaying(isPlaying)
+		})
+
+		const endSubscription = player.addListener('playToEnd', () => {
+			if (!loop) {
+				onComplete?.()
+			}
+		})
+
+		return () => {
+			subscription.remove()
+			playingSubscription.remove()
+			endSubscription.remove()
+		}
+	}, [player, loop, onComplete, onError])
 
 	// ============================================
 	// HANDLERS
 	// ============================================
 
 	/**
-	 * Obsługa zmiany statusu video
-	 */
-	const handlePlaybackStatusUpdate = useCallback(
-		(status: AVPlaybackStatus) => {
-			if (!status.isLoaded) {
-				if (status.error) {
-					setHasError(true)
-					setErrorMessage('Nie udało się załadować video')
-					onError?.(status.error)
-				}
-				return
-			}
-
-			setIsLoading(false)
-			setIsPlaying(status.isPlaying)
-			setDuration(status.durationMillis || 0)
-			setPosition(status.positionMillis || 0)
-
-			// Video się skończyło
-			if (status.didJustFinish && !loop) {
-				onComplete?.()
-			}
-		},
-		[loop, onComplete, onError]
-	)
-
-	/**
 	 * Play/Pause toggle
 	 */
-	const togglePlayPause = async () => {
-		if (!videoRef.current) return
+	const togglePlayPause = useCallback(() => {
+		if (!player) return
 
 		// Ukryj thumbnail przy pierwszym play
 		if (showThumbnail) {
@@ -105,89 +111,28 @@ export default function VideoPlayer({
 		}
 
 		if (isPlaying) {
-			await videoRef.current.pauseAsync()
+			player.pause()
 		} else {
-			await videoRef.current.playAsync()
+			player.play()
 		}
-
-		resetControlsTimeout()
-	}
+	}, [player, isPlaying, showThumbnail])
 
 	/**
 	 * Restart video
 	 */
-	const restartVideo = async () => {
-		if (!videoRef.current) return
-		await videoRef.current.setPositionAsync(0)
-		await videoRef.current.playAsync()
+	const restartVideo = useCallback(() => {
+		if (!player) return
+		player.currentTime = 0
+		player.play()
 		setShowThumbnail(false)
-	}
-
-	/**
-	 * Seek do pozycji
-	 */
-	const seekTo = async (positionMs: number) => {
-		if (!videoRef.current) return
-		await videoRef.current.setPositionAsync(positionMs)
-	}
-
-	/**
-	 * Przewiń o 10 sekund
-	 */
-	const skipForward = async () => {
-		const newPosition = Math.min(position + 10000, duration)
-		await seekTo(newPosition)
-		resetControlsTimeout()
-	}
-
-	/**
-	 * Cofnij o 10 sekund
-	 */
-	const skipBackward = async () => {
-		const newPosition = Math.max(position - 10000, 0)
-		await seekTo(newPosition)
-		resetControlsTimeout()
-	}
+	}, [player])
 
 	/**
 	 * Pokaż/ukryj kontrolki
 	 */
-	const toggleControls = () => {
-		setControlsVisible(!controlsVisible)
-		if (!controlsVisible) {
-			resetControlsTimeout()
-		}
-	}
-
-	/**
-	 * Reset timera kontrolek
-	 */
-	const resetControlsTimeout = () => {
-		if (controlsTimeout.current) {
-			clearTimeout(controlsTimeout.current)
-		}
-		setControlsVisible(true)
-		controlsTimeout.current = setTimeout(() => {
-			if (isPlaying) {
-				setControlsVisible(false)
-			}
-		}, 3000)
-	}
-
-	/**
-	 * Formatuj czas (ms -> mm:ss)
-	 */
-	const formatTime = (ms: number): string => {
-		const totalSeconds = Math.floor(ms / 1000)
-		const minutes = Math.floor(totalSeconds / 60)
-		const seconds = totalSeconds % 60
-		return `${minutes}:${seconds.toString().padStart(2, '0')}`
-	}
-
-	/**
-	 * Oblicz progress bar
-	 */
-	const progressPercent = duration > 0 ? (position / duration) * 100 : 0
+	const toggleControls = useCallback(() => {
+		setControlsVisible((prev) => !prev)
+	}, [])
 
 	// ============================================
 	// RENDER - ERROR STATE
@@ -199,7 +144,11 @@ export default function VideoPlayer({
 				<View style={styles.errorContainer}>
 					<Ionicons name="alert-circle" size={48} color={colors.error} />
 					<Text style={styles.errorText}>{errorMessage}</Text>
-					<TouchableOpacity style={styles.retryButton} onPress={() => setHasError(false)}>
+					<TouchableOpacity style={styles.retryButton} onPress={() => {
+						setHasError(false)
+						setIsLoading(true)
+						player?.play()
+					}}>
 						<Text style={styles.retryButtonText}>Spróbuj ponownie</Text>
 					</TouchableOpacity>
 				</View>
@@ -213,21 +162,12 @@ export default function VideoPlayer({
 
 	return (
 		<View style={[styles.container, { height }]}>
-			{/* Video */}
-			<Video
-				ref={videoRef}
-				source={{ uri: videoUrl }}
+			{/* Video - nowe API expo-video */}
+			<VideoView
+				player={player}
 				style={styles.video}
-				resizeMode={ResizeMode.CONTAIN}
-				shouldPlay={autoplay}
-				isLooping={loop}
-				onPlaybackStatusUpdate={handlePlaybackStatusUpdate}
-				onLoad={() => setIsLoading(false)}
-				onError={error => {
-					setHasError(true)
-					setErrorMessage('Błąd ładowania video')
-					onError?.(error)
-				}}
+				contentFit="contain"
+				nativeControls={false}
 			/>
 
 			{/* Thumbnail overlay */}
@@ -254,52 +194,21 @@ export default function VideoPlayer({
 					activeOpacity={1}
 					onPress={toggleControls}>
 					{controlsVisible && (
-						<>
-							{/* Center controls */}
-							<View style={styles.centerControls}>
-								{/* Skip backward */}
-								<TouchableOpacity style={styles.skipButton} onPress={skipBackward}>
-									<Ionicons name="play-back" size={28} color={colors.textPrimary} />
-								</TouchableOpacity>
-
-								{/* Play/Pause */}
-								<TouchableOpacity style={styles.playButton} onPress={togglePlayPause}>
-									<Ionicons name={isPlaying ? 'pause' : 'play'} size={36} color={colors.textOnPrimary} />
-								</TouchableOpacity>
-
-								{/* Skip forward */}
-								<TouchableOpacity style={styles.skipButton} onPress={skipForward}>
-									<Ionicons name="play-forward" size={28} color={colors.textPrimary} />
-								</TouchableOpacity>
-							</View>
-
-							{/* Bottom controls */}
-							<View style={styles.bottomControls}>
-								{/* Progress bar */}
-								<View style={styles.progressBarContainer}>
-									<View style={styles.progressBarBackground}>
-										<View style={[styles.progressBarFill, { width: `${progressPercent}%` }]} />
-									</View>
-								</View>
-
-								{/* Time */}
-								<View style={styles.timeContainer}>
-									<Text style={styles.timeText}>{formatTime(position)}</Text>
-									<Text style={styles.timeText}> / </Text>
-									<Text style={styles.timeText}>{formatTime(duration)}</Text>
-								</View>
-							</View>
-						</>
+						<View style={styles.centerControls}>
+							{/* Play/Pause */}
+							<TouchableOpacity style={styles.playButton} onPress={togglePlayPause}>
+								<Ionicons name={isPlaying ? 'pause' : 'play'} size={36} color={colors.textOnPrimary} />
+							</TouchableOpacity>
+						</View>
 					)}
 				</TouchableOpacity>
 			)}
 
-			{/* Restart button (gdy video się skończyło) */}
-			{!isPlaying && position > 0 && position >= duration - 500 && !loop && (
-				<View style={styles.restartOverlay}>
-					<TouchableOpacity style={styles.restartButton} onPress={restartVideo}>
-						<Ionicons name="refresh" size={32} color={colors.textOnPrimary} />
-						<Text style={styles.restartText}>Odtwórz ponownie</Text>
+			{/* Thumbnail z przyciskiem play (gdy nie ma thumbnailUrl) */}
+			{showThumbnail && !thumbnailUrl && (
+				<View style={styles.thumbnailOverlay}>
+					<TouchableOpacity style={styles.playButtonLarge} onPress={togglePlayPause}>
+						<Ionicons name="play" size={48} color={colors.textOnPrimary} />
 					</TouchableOpacity>
 				</View>
 			)}
@@ -327,6 +236,7 @@ const styles = StyleSheet.create({
 		...StyleSheet.absoluteFillObject,
 		justifyContent: 'center',
 		alignItems: 'center',
+		backgroundColor: 'rgba(0, 0, 0, 0.3)',
 	},
 	thumbnail: {
 		...StyleSheet.absoluteFillObject,
@@ -357,9 +267,6 @@ const styles = StyleSheet.create({
 		alignItems: 'center',
 		gap: 32,
 	},
-	skipButton: {
-		padding: 8,
-	},
 	playButton: {
 		width: 64,
 		height: 64,
@@ -368,35 +275,6 @@ const styles = StyleSheet.create({
 		justifyContent: 'center',
 		alignItems: 'center',
 		paddingLeft: 4,
-	},
-	bottomControls: {
-		position: 'absolute',
-		bottom: 0,
-		left: 0,
-		right: 0,
-		padding: 12,
-	},
-	progressBarContainer: {
-		marginBottom: 8,
-	},
-	progressBarBackground: {
-		height: 4,
-		backgroundColor: 'rgba(255, 255, 255, 0.3)',
-		borderRadius: 2,
-		overflow: 'hidden',
-	},
-	progressBarFill: {
-		height: '100%',
-		backgroundColor: colors.primary,
-		borderRadius: 2,
-	},
-	timeContainer: {
-		flexDirection: 'row',
-		justifyContent: 'flex-end',
-	},
-	timeText: {
-		color: colors.textPrimary,
-		fontSize: 12,
 	},
 	errorContainer: {
 		flex: 1,
@@ -421,19 +299,5 @@ const styles = StyleSheet.create({
 		color: colors.textOnPrimary,
 		fontSize: 14,
 		fontWeight: '600',
-	},
-	restartOverlay: {
-		...StyleSheet.absoluteFillObject,
-		justifyContent: 'center',
-		alignItems: 'center',
-		backgroundColor: 'rgba(0, 0, 0, 0.7)',
-	},
-	restartButton: {
-		alignItems: 'center',
-		gap: 8,
-	},
-	restartText: {
-		color: colors.textPrimary,
-		fontSize: 14,
 	},
 })

@@ -20,9 +20,11 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native'
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase, handleSupabaseError } from '../../api/supabase'
 import { useAuth } from '../../context/AuthContext'
+import { notifyNewMessage } from '../../services/notifications'
+import { messageKeys } from '../../api/services/messages'
 import { colors } from '../../theme/colors'
 import type { AppStackParamList } from '../../navigation/AppNavigator'
 
@@ -43,6 +45,7 @@ interface Message {
 
 interface RecipientProfile {
 	id: string
+	user_id: string
 	first_name: string
 	last_name: string
 	email: string
@@ -63,14 +66,27 @@ async function getMessages(userId: string, recipientId: string): Promise<Message
 	return data as Message[]
 }
 
-async function getRecipientProfile(recipientUserId: string): Promise<RecipientProfile | null> {
-	const { data, error } = await supabase
+async function getRecipientProfile(recipientProfileId: string): Promise<RecipientProfile | null> {
+	// Najpierw próbuj znaleźć po profile.id
+	let { data, error } = await supabase
 		.from('profiles')
-		.select('id, first_name, last_name, email')
-		.eq('user_id', recipientUserId)
-		.single()
+		.select('id, user_id, first_name, last_name, email')
+		.eq('id', recipientProfileId)
+		.maybeSingle()
 
-	if (error) return null
+	// Jeśli nie znaleziono, spróbuj po user_id (dla kompatybilności)
+	if (!data) {
+		const result = await supabase
+			.from('profiles')
+			.select('id, user_id, first_name, last_name, email')
+			.eq('user_id', recipientProfileId)
+			.maybeSingle()
+		
+		data = result.data
+		error = result.error
+	}
+
+	if (error || !data) return null
 	return data as RecipientProfile
 }
 
@@ -161,26 +177,35 @@ export default function ChatScreen() {
 	// Pobierz profil odbiorcy
 	const { data: recipient } = useQuery({
 		queryKey: ['recipient-profile', recipientId],
-		queryFn: () => getRecipientProfile(recipientId),
+		queryFn: async () => {
+			console.log('🔍 Szukam odbiorcy z ID:', recipientId)
+			const result = await getRecipientProfile(recipientId)
+			console.log('👤 Znaleziony odbiorca:', result)
+			return result
+		},
 		enabled: !!recipientId,
 	})
 
-	// Pobierz wiadomości
+	// Pobierz wiadomości - używaj profile.id (foreign key w tabeli messages)
 	const {
 		data: messages = [],
 		isLoading,
 		refetch,
 	} = useQuery({
-		queryKey: ['messages', profile?.id, recipientId],
+		queryKey: ['messages', profile?.id, recipient?.id],
 		queryFn: () => {
 			if (!profile?.id || !recipient?.id) return []
+			console.log('📥 Pobieranie wiadomości:', {
+				myProfileId: profile.id,
+				recipientProfileId: recipient.id,
+			})
 			return getMessages(profile.id, recipient.id)
 		},
 		enabled: !!profile?.id && !!recipient?.id,
 		refetchInterval: 5000, // Odświeżaj co 5 sekund
 	})
 
-	// Oznacz jako przeczytane
+	// Oznacz jako przeczytane i odśwież licznik
 	useEffect(() => {
 		if (messages.length > 0 && profile?.id && recipient?.id) {
 			const unreadMessages = messages
@@ -188,10 +213,13 @@ export default function ChatScreen() {
 				.map((m) => m.id)
 			
 			if (unreadMessages.length > 0) {
-				markAsRead(unreadMessages)
+				markAsRead(unreadMessages).then(() => {
+					// Odśwież licznik nieprzeczytanych
+					queryClient.invalidateQueries({ queryKey: messageKeys.unreadCount(profile.id) })
+				})
 			}
 		}
-	}, [messages, profile?.id, recipient?.id])
+	}, [messages, profile?.id, recipient?.id, queryClient])
 
 	// Scroll do końca
 	useEffect(() => {
@@ -209,17 +237,28 @@ export default function ChatScreen() {
 	const handleSend = useCallback(async () => {
 		if (!newMessage.trim() || !profile?.id || !recipient?.id) return
 
+		console.log('📤 Wysyłanie wiadomości:', {
+			sender_id: profile.id,
+			receiver_id: recipient.id,
+			senderName: `${profile.first_name} ${profile.last_name}`,
+			recipientName: `${recipient.first_name} ${recipient.last_name}`,
+		})
+
 		setIsSending(true)
 		try {
 			await sendMessage(profile.id, recipient.id, newMessage.trim())
 			setNewMessage('')
 			refetch()
+			
+			// Wyślij powiadomienie push do odbiorcy (używaj user_id dla powiadomień)
+			const senderName = `${profile.first_name} ${profile.last_name}`
+			notifyNewMessage(recipient.user_id, senderName, newMessage.trim())
 		} catch (error) {
 			console.error('Błąd wysyłania wiadomości:', error)
 		} finally {
 			setIsSending(false)
 		}
-	}, [newMessage, profile?.id, recipient?.id, refetch])
+	}, [newMessage, profile, recipient, refetch])
 
 	// ============================================
 	// RENDER

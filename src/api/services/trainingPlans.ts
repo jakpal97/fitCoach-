@@ -708,6 +708,169 @@ export function useRemoveExerciseFromWorkout() {
 }
 
 // ============================================
+// UKOŃCZONE TRENINGI - API I HOOKI
+// ============================================
+
+/**
+ * Struktura ukończonego treningu
+ */
+export interface CompletedWorkout {
+	id: string
+	user_id: string
+	workout_day_id: string
+	status: 'completed' | 'partial'
+	duration_minutes: number
+	feeling_rating: number
+	client_notes?: string
+	created_at: string
+	workout_day?: {
+		id: string
+		name: string
+		day_of_week: number
+	}
+}
+
+/**
+ * Statystyki treningów użytkownika
+ */
+export interface WorkoutStats {
+	thisWeek: number
+	streak: number
+	total: number
+}
+
+/**
+ * Pobiera ukończone treningi dla użytkownika
+ */
+export async function getCompletedWorkouts(userId: string): Promise<CompletedWorkout[]> {
+	const { data, error } = await supabase
+		.from('completed_workouts')
+		.select(`
+			*,
+			workout_day:workout_days (
+				id,
+				name,
+				day_of_week
+			)
+		`)
+		.eq('user_id', userId)
+		.order('created_at', { ascending: false })
+
+	if (error) throw handleSupabaseError(error)
+	return data as CompletedWorkout[]
+}
+
+/**
+ * Sprawdza czy dany dzień treningowy jest ukończony dzisiaj
+ */
+export async function isWorkoutDayCompleted(userId: string, workoutDayId: string): Promise<boolean> {
+	const today = new Date().toISOString().split('T')[0]
+	
+	const { data, error } = await supabase
+		.from('completed_workouts')
+		.select('id')
+		.eq('user_id', userId)
+		.eq('workout_day_id', workoutDayId)
+		.gte('created_at', `${today}T00:00:00`)
+		.lte('created_at', `${today}T23:59:59`)
+		.limit(1)
+
+	if (error) throw handleSupabaseError(error)
+	return (data?.length || 0) > 0
+}
+
+/**
+ * Pobiera statystyki treningów użytkownika
+ */
+export async function getWorkoutStats(userId: string): Promise<WorkoutStats> {
+	// Pobierz wszystkie ukończone treningi
+	const { data, error } = await supabase
+		.from('completed_workouts')
+		.select('id, created_at, status')
+		.eq('user_id', userId)
+		.order('created_at', { ascending: false })
+
+	if (error) throw handleSupabaseError(error)
+
+	const completedWorkouts = data || []
+	const total = completedWorkouts.length
+
+	// Oblicz treningi w tym tygodniu
+	const now = new Date()
+	const startOfWeek = new Date(now)
+	const day = startOfWeek.getDay()
+	const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1) // Poniedziałek jako start
+	startOfWeek.setDate(diff)
+	startOfWeek.setHours(0, 0, 0, 0)
+
+	const thisWeek = completedWorkouts.filter(w => 
+		new Date(w.created_at) >= startOfWeek
+	).length
+
+	// Oblicz streak (dni pod rząd z treningiem)
+	let streak = 0
+	if (completedWorkouts.length > 0) {
+		const dates = [...new Set(completedWorkouts.map(w => 
+			new Date(w.created_at).toISOString().split('T')[0]
+		))].sort().reverse()
+
+		const today = new Date().toISOString().split('T')[0]
+		const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0]
+
+		// Sprawdź czy trening był dziś lub wczoraj
+		if (dates[0] === today || dates[0] === yesterday) {
+			streak = 1
+			for (let i = 1; i < dates.length; i++) {
+				const prevDate = new Date(dates[i - 1])
+				const currDate = new Date(dates[i])
+				const diffDays = Math.round((prevDate.getTime() - currDate.getTime()) / 86400000)
+				
+				if (diffDays === 1) {
+					streak++
+				} else {
+					break
+				}
+			}
+		}
+	}
+
+	return { thisWeek, streak, total }
+}
+
+/**
+ * Hook do pobierania ukończonych treningów
+ */
+export function useCompletedWorkouts(userId: string) {
+	return useQuery({
+		queryKey: ['completed-workouts', userId],
+		queryFn: () => getCompletedWorkouts(userId),
+		enabled: !!userId,
+	})
+}
+
+/**
+ * Hook do sprawdzania czy dzisiejszy trening jest ukończony
+ */
+export function useTodayWorkoutStatus(userId: string, workoutDayId: string | null) {
+	return useQuery({
+		queryKey: ['today-workout-status', userId, workoutDayId],
+		queryFn: () => workoutDayId ? isWorkoutDayCompleted(userId, workoutDayId) : false,
+		enabled: !!userId && !!workoutDayId,
+	})
+}
+
+/**
+ * Hook do pobierania statystyk treningów
+ */
+export function useWorkoutStats(userId: string) {
+	return useQuery({
+		queryKey: ['workout-stats', userId],
+		queryFn: () => getWorkoutStats(userId),
+		enabled: !!userId,
+	})
+}
+
+// ============================================
 // EKSPORT
 // ============================================
 
@@ -727,6 +890,9 @@ export default {
 	updateWorkoutExercise,
 	removeExerciseFromWorkout,
 	reorderWorkoutExercises,
+	getCompletedWorkouts,
+	isWorkoutDayCompleted,
+	getWorkoutStats,
 	getWeekDates,
 	DAY_NAMES,
 }

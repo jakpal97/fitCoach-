@@ -22,6 +22,7 @@ import { useAuth } from '../../context/AuthContext'
 import { useClientsTodayStatus, type ClientTodayStatus, type TodayWorkoutStatus } from '../../api/services/clients'
 import { colors } from '../../theme/colors'
 import type { AppStackParamList } from '../../navigation/AppNavigator'
+import MessageBadge from '../../components/common/MessageBadge'
 
 // ============================================
 // MAPOWANIA STATUSÓW
@@ -174,9 +175,9 @@ export default function TrainerDashboardScreen() {
 					<Text style={styles.greeting}>Cześć, {profile?.first_name}! 👋</Text>
 					<Text style={styles.dateText}>{today}</Text>
 				</View>
-				<TouchableOpacity style={styles.notificationButton}>
-					<Ionicons name="notifications-outline" size={24} color={colors.textPrimary} />
-				</TouchableOpacity>
+				<View style={styles.notificationButton}>
+					<MessageBadge navigateToList />
+				</View>
 			</View>
 
 			{/* Statystyki */}

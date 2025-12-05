@@ -21,73 +21,15 @@ import ClientDetailScreen from '../screens/trainer/ClientDetailScreen'
 import AddClientScreen from '../screens/trainer/AddClientScreen'
 import CreatePlanScreen from '../screens/trainer/CreatePlanScreen'
 import PlanDetailScreen from '../screens/trainer/PlanDetailScreen'
+import EditPlanScreen from '../screens/trainer/EditPlanScreen'
+import TrainerSettingsScreen from '../screens/trainer/TrainerSettingsScreen'
 import ChatScreen from '../screens/shared/ChatScreen'
-
-// ============================================
-// PLACEHOLDER SCREENS (do zastąpienia później)
-// ============================================
-
-// Client Screens
-function ClientHomeScreen() {
-	return (
-		<View style={{ flex: 1, backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }}>
-			<Text style={{ color: colors.textPrimary, fontSize: 24 }}>🏋️ Dzisiejszy Trening</Text>
-			<Text style={{ color: colors.textSecondary, marginTop: 8 }}>Ekran w budowie...</Text>
-		</View>
-	)
-}
-
-function ClientProgressScreen() {
-	return (
-		<View style={{ flex: 1, backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }}>
-			<Text style={{ color: colors.textPrimary, fontSize: 24 }}>📊 Postępy</Text>
-			<Text style={{ color: colors.textSecondary, marginTop: 8 }}>Ekran w budowie...</Text>
-		</View>
-	)
-}
-
-function ClientSettingsScreen() {
-	const { logout, profile } = useAuth()
-	
-	return (
-		<View style={{ flex: 1, backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center', padding: 24 }}>
-			<Text style={{ color: colors.textPrimary, fontSize: 24 }}>⚙️ Ustawienia</Text>
-			<Text style={{ color: colors.textSecondary, marginTop: 8, marginBottom: 24 }}>
-				Zalogowany jako: {profile?.first_name} {profile?.last_name}
-			</Text>
-			<Text 
-				style={{ color: colors.primary, fontSize: 16 }}
-				onPress={logout}
-			>
-				Wyloguj się
-			</Text>
-		</View>
-	)
-}
-
-// TrainerDashboardScreen - zaimportowany z ../screens/trainer/TrainerDashboardScreen
-// TrainerExerciseLibraryScreen - zaimportowany z ../screens/trainer/ExerciseLibraryScreen
-
-// TrainerClientsScreen - zaimportowany z ../screens/trainer/ClientsListScreen
-
-function TrainerSettingsScreen() {
-	const { logout, profile } = useAuth()
-	
-	return (
-		<View style={{ flex: 1, backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center', padding: 24 }}>
-			<Text style={{ color: colors.textPrimary, fontSize: 24 }}>⚙️ Ustawienia</Text>
-			<Text style={{ color: colors.textSecondary, marginTop: 8, marginBottom: 24 }}>
-				Trener: {profile?.first_name} {profile?.last_name}
-			</Text>
-			<Text 
-				style={{ color: colors.primary, fontSize: 16 }}
-				onPress={logout}
-			>
-				Wyloguj się
-			</Text>
-		</View>
-	)
-}
+import MessagesListScreen from '../screens/shared/MessagesListScreen'
+import ClientHomeScreen from '../screens/client/ClientHomeScreen'
+import WorkoutScreen from '../screens/client/WorkoutScreen'
+import ClientProgressScreen from '../screens/client/ClientProgressScreen'
+import ClientSettingsScreen from '../screens/client/ClientSettingsScreen'
+import ClientPlanViewScreen from '../screens/client/ClientPlanViewScreen'
 
 // ============================================
 // TYPY NAWIGACJI
@@ -121,6 +63,10 @@ export type AppStackParamList = {
 	CreatePlan: { clientId: string }
 	PlanDetail: { planId: string }
 	Chat: { recipientId: string }
+	MessagesList: undefined
+	Workout: { workoutDayId: string }
+	ClientPlanView: { planId: string }
+	EditPlan: { planId: string }
 }
 
 // ============================================
@@ -154,9 +100,7 @@ function ClientTabNavigator() {
 				component={ClientHomeScreen}
 				options={{
 					tabBarLabel: 'Trening',
-					tabBarIcon: ({ color, size }) => (
-						<Ionicons name="fitness" size={size} color={color} />
-					),
+					tabBarIcon: ({ color, size }) => <Ionicons name="fitness" size={size} color={color} />,
 				}}
 			/>
 			<ClientTab.Screen
@@ -164,9 +108,7 @@ function ClientTabNavigator() {
 				component={ClientProgressScreen}
 				options={{
 					tabBarLabel: 'Postępy',
-					tabBarIcon: ({ color, size }) => (
-						<Ionicons name="stats-chart" size={size} color={color} />
-					),
+					tabBarIcon: ({ color, size }) => <Ionicons name="stats-chart" size={size} color={color} />,
 				}}
 			/>
 			<ClientTab.Screen
@@ -174,9 +116,7 @@ function ClientTabNavigator() {
 				component={ClientSettingsScreen}
 				options={{
 					tabBarLabel: 'Ustawienia',
-					tabBarIcon: ({ color, size }) => (
-						<Ionicons name="settings" size={size} color={color} />
-					),
+					tabBarIcon: ({ color, size }) => <Ionicons name="settings" size={size} color={color} />,
 				}}
 			/>
 		</ClientTab.Navigator>
@@ -214,9 +154,7 @@ function TrainerTabNavigator() {
 				component={TrainerDashboardScreen}
 				options={{
 					tabBarLabel: 'Dashboard',
-					tabBarIcon: ({ color, size }) => (
-						<Ionicons name="home" size={size} color={color} />
-					),
+					tabBarIcon: ({ color, size }) => <Ionicons name="home" size={size} color={color} />,
 				}}
 			/>
 			<TrainerTab.Screen
@@ -224,9 +162,7 @@ function TrainerTabNavigator() {
 				component={ExerciseLibraryScreen}
 				options={{
 					tabBarLabel: 'Ćwiczenia',
-					tabBarIcon: ({ color, size }) => (
-						<Ionicons name="barbell" size={size} color={color} />
-					),
+					tabBarIcon: ({ color, size }) => <Ionicons name="barbell" size={size} color={color} />,
 				}}
 			/>
 			<TrainerTab.Screen
@@ -234,9 +170,7 @@ function TrainerTabNavigator() {
 				component={ClientsListScreen}
 				options={{
 					tabBarLabel: 'Klienci',
-					tabBarIcon: ({ color, size }) => (
-						<Ionicons name="people" size={size} color={color} />
-					),
+					tabBarIcon: ({ color, size }) => <Ionicons name="people" size={size} color={color} />,
 				}}
 			/>
 			<TrainerTab.Screen
@@ -244,9 +178,7 @@ function TrainerTabNavigator() {
 				component={TrainerSettingsScreen}
 				options={{
 					tabBarLabel: 'Ustawienia',
-					tabBarIcon: ({ color, size }) => (
-						<Ionicons name="settings" size={size} color={color} />
-					),
+					tabBarIcon: ({ color, size }) => <Ionicons name="settings" size={size} color={color} />,
 				}}
 			/>
 		</TrainerTab.Navigator>
@@ -275,62 +207,92 @@ export default function AppNavigator() {
 				<AppStack.Screen name="ClientTabs" component={ClientTabNavigator} />
 			)}
 			{/* Dodatkowe ekrany */}
-			<AppStack.Screen 
-				name="AddExercise" 
+			<AppStack.Screen
+				name="AddExercise"
 				component={AddExerciseScreen}
 				options={{
 					presentation: 'modal',
 					animation: 'slide_from_bottom',
 				}}
 			/>
-			<AppStack.Screen 
-				name="ExerciseDetail" 
+			<AppStack.Screen
+				name="ExerciseDetail"
 				component={ExerciseDetailScreen}
 				options={{
 					animation: 'slide_from_right',
 				}}
 			/>
-			<AppStack.Screen 
-				name="EditExercise" 
+			<AppStack.Screen
+				name="EditExercise"
 				component={EditExerciseScreen}
 				options={{
 					presentation: 'modal',
 					animation: 'slide_from_bottom',
 				}}
 			/>
-			<AppStack.Screen 
-				name="ClientDetail" 
+			<AppStack.Screen
+				name="ClientDetail"
 				component={ClientDetailScreen}
 				options={{
 					animation: 'slide_from_right',
 				}}
 			/>
-			<AppStack.Screen 
-				name="AddClient" 
+			<AppStack.Screen
+				name="AddClient"
 				component={AddClientScreen}
 				options={{
 					presentation: 'modal',
 					animation: 'slide_from_bottom',
 				}}
 			/>
-			<AppStack.Screen 
-				name="CreatePlan" 
+			<AppStack.Screen
+				name="CreatePlan"
 				component={CreatePlanScreen}
 				options={{
 					presentation: 'modal',
 					animation: 'slide_from_bottom',
 				}}
 			/>
-			<AppStack.Screen 
-				name="PlanDetail" 
+			<AppStack.Screen
+				name="PlanDetail"
 				component={PlanDetailScreen}
 				options={{
 					animation: 'slide_from_right',
 				}}
 			/>
-			<AppStack.Screen 
-				name="Chat" 
+			<AppStack.Screen
+				name="MessagesList"
+				component={MessagesListScreen}
+				options={{
+					animation: 'slide_from_right',
+				}}
+			/>
+			<AppStack.Screen
+				name="Chat"
 				component={ChatScreen}
+				options={{
+					animation: 'slide_from_right',
+				}}
+			/>
+			<AppStack.Screen
+				name="Workout"
+				component={WorkoutScreen}
+				options={{
+					animation: 'slide_from_bottom',
+					gestureEnabled: false,
+				}}
+			/>
+			<AppStack.Screen
+				name="EditPlan"
+				component={EditPlanScreen}
+				options={{
+					presentation: 'modal',
+					animation: 'slide_from_bottom',
+				}}
+			/>
+			<AppStack.Screen
+				name="ClientPlanView"
+				component={ClientPlanViewScreen}
 				options={{
 					animation: 'slide_from_right',
 				}}
@@ -338,4 +300,3 @@ export default function AppNavigator() {
 		</AppStack.Navigator>
 	)
 }
-

@@ -26,6 +26,11 @@ import {
   type SignUpData,
   type AuthResponse,
 } from '../api/services/auth';
+import {
+  registerForPushNotifications,
+  savePushToken,
+  removePushToken,
+} from '../services/notifications';
 import type { Profile, ClientData } from '../types';
 
 // ============================================
@@ -196,8 +201,29 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
       setProfile(userProfile);
       setClientData(userClientData);
+
+      // Zarejestruj powiadomienia push
+      registerPushNotifications(userId);
     } catch (error) {
       console.error('Błąd ładowania danych użytkownika:', error);
+    }
+  };
+
+  /**
+   * Zarejestruj token powiadomień push
+   * UWAGA: Pełna funkcjonalność wymaga development build (nie Expo Go)
+   */
+  const registerPushNotifications = async (userId: string) => {
+    try {
+      const token = await registerForPushNotifications();
+      if (token) {
+        await savePushToken(userId, token);
+        console.log('Push token zarejestrowany');
+      }
+      // Brak tokena = Expo Go lub brak uprawnień - to OK
+    } catch (error) {
+      // Ciche niepowodzenie - push nie jest krytyczny
+      console.log('Push notifications niedostępne (prawdopodobnie Expo Go)');
     }
   };
 
@@ -277,6 +303,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
     setIsLoading(true);
     
     try {
+      // Usuń token push przed wylogowaniem
+      if (currentUser?.id) {
+        await removePushToken(currentUser.id);
+      }
+      
       await authSignOut();
       setCurrentUser(null);
       setProfile(null);
@@ -284,7 +315,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [currentUser?.id]);
 
   /**
    * Usunięcie konta
