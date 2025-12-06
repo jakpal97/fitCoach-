@@ -11,16 +11,17 @@ import { Ionicons } from '@expo/vector-icons'
 import { useNavigation } from '@react-navigation/native'
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
 import { useAuth } from '../../context/AuthContext'
+import { DAY_NAMES, type WorkoutDayWithExercises } from '../../api/services/trainingPlans'
 import { 
-	useActivePlan, 
-	useTodayWorkoutStatus, 
-	useWorkoutStats, 
-	DAY_NAMES, 
-	type WorkoutDayWithExercises 
-} from '../../api/services/trainingPlans'
+	useOfflineActivePlan, 
+	useOfflineTodayWorkoutStatus, 
+	useOfflineWorkoutStats,
+	useNetworkStatus,
+} from '../../services/offline'
 import { colors } from '../../theme/colors'
 import type { AppStackParamList } from '../../navigation/AppNavigator'
 import MessageBadge from '../../components/common/MessageBadge'
+import { OfflineIndicator } from '../../components/common/OfflineBanner'
 
 // ============================================
 // KOMPONENT KARTY ĆWICZENIA
@@ -58,12 +59,13 @@ function ExercisePreview({ name, sets, reps, index }: ExercisePreviewProps) {
 export default function ClientHomeScreen() {
 	const navigation = useNavigation<NativeStackNavigationProp<AppStackParamList>>()
 	const { profile, clientData, currentUser } = useAuth()
+	const { isOffline } = useNetworkStatus()
 
-	// Pobierz aktywny plan
-	const { data: activePlan, isLoading, refetch, isRefetching } = useActivePlan(profile?.id || '')
+	// Pobierz aktywny plan (z obsługą offline)
+	const { data: activePlan, isLoading, refetch, isRefetching, isFromCache } = useOfflineActivePlan(profile?.id || '')
 	
-	// Pobierz statystyki treningów
-	const { data: stats } = useWorkoutStats(currentUser?.id || '')
+	// Pobierz statystyki treningów (z obsługą offline)
+	const { data: stats } = useOfflineWorkoutStats(currentUser?.id || '')
 
 	// Oblicz dzisiejszy dzień
 	const today = useMemo(() => {
@@ -86,8 +88,8 @@ export default function ClientHomeScreen() {
 		return activePlan.workout_days.find(day => day.day_of_week === today.dayOfWeek) || null
 	}, [activePlan, today.dayOfWeek])
 
-	// Sprawdź czy dzisiejszy trening jest ukończony
-	const { data: isTodayCompleted, refetch: refetchTodayStatus } = useTodayWorkoutStatus(
+	// Sprawdź czy dzisiejszy trening jest ukończony (z obsługą offline)
+	const { data: isTodayCompleted, refetch: refetchTodayStatus } = useOfflineTodayWorkoutStatus(
 		currentUser?.id || '', 
 		todayWorkout?.id || null
 	)
@@ -163,8 +165,11 @@ export default function ClientHomeScreen() {
 						</Text>
 						<Text style={styles.date}>{today.date}</Text>
 					</View>
-					<View style={styles.notificationButton}>
-						<MessageBadge recipientId={profile?.trainer_id} />
+					<View style={styles.headerRight}>
+						<OfflineIndicator />
+						<View style={styles.notificationButton}>
+							<MessageBadge recipientId={profile?.trainer_id} />
+						</View>
 					</View>
 				</View>
 
@@ -347,6 +352,11 @@ const styles = StyleSheet.create({
 		color: colors.textSecondary,
 		marginTop: 4,
 		textTransform: 'capitalize',
+	},
+	headerRight: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		gap: 8,
 	},
 	notificationButton: {
 		width: 44,

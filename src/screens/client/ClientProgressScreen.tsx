@@ -21,12 +21,15 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import { useAuth } from '../../context/AuthContext'
 import {
-	useMeasurements,
-	useAddMeasurement,
 	useDeleteMeasurement,
 	type Measurement,
 	type MeasurementInput,
 } from '../../api/services/measurements'
+import { 
+	useOfflineMeasurements, 
+	useOfflineSaveMeasurement,
+	useNetworkStatus,
+} from '../../services/offline'
 import { colors } from '../../theme/colors'
 
 // ============================================
@@ -533,9 +536,10 @@ function AddMeasurementModal({ visible, onClose, onSave, isSaving }: AddMeasurem
 export default function ClientProgressScreen() {
 	const { currentUser } = useAuth()
 	const userId = currentUser?.id || ''
+	const { isOffline } = useNetworkStatus()
 
-	const { data: measurements = [], isLoading, refetch, isRefetching } = useMeasurements(userId)
-	const addMeasurement = useAddMeasurement()
+	const { data: measurements = [], isLoading, refetch, isRefetching, isFromCache } = useOfflineMeasurements(userId)
+	const saveMeasurement = useOfflineSaveMeasurement()
 	const deleteMeasurement = useDeleteMeasurement()
 
 	const [showAddModal, setShowAddModal] = useState(false)
@@ -547,14 +551,15 @@ export default function ClientProgressScreen() {
 	const handleAddMeasurement = useCallback(
 		async (input: MeasurementInput) => {
 			try {
-				await addMeasurement.mutateAsync({ userId, input })
+				await saveMeasurement.mutateAsync({ userId, input })
 				setShowAddModal(false)
-				Alert.alert('Sukces', 'Pomiar został dodany')
+				const offlineMsg = isOffline ? ' (zostanie zsynchronizowany po powrocie internetu)' : ''
+				Alert.alert('Sukces', `Pomiar został dodany${offlineMsg}`)
 			} catch (error: any) {
 				Alert.alert('Błąd', error.message || 'Nie udało się dodać pomiaru')
 			}
 		},
-		[userId, addMeasurement]
+		[userId, saveMeasurement, isOffline]
 	)
 
 	const handleDeleteMeasurement = useCallback(
@@ -642,7 +647,7 @@ export default function ClientProgressScreen() {
 				visible={showAddModal}
 				onClose={() => setShowAddModal(false)}
 				onSave={handleAddMeasurement}
-				isSaving={addMeasurement.isPending}
+				isSaving={saveMeasurement.isPending}
 			/>
 		</SafeAreaView>
 	)

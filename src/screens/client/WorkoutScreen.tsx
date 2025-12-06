@@ -20,10 +20,11 @@ import { SafeAreaView } from 'react-native-safe-area-context'
 import { Ionicons } from '@expo/vector-icons'
 import { useNavigation, useRoute, type RouteProp } from '@react-navigation/native'
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase, handleSupabaseError } from '../../api/supabase'
 import { useAuth } from '../../context/AuthContext'
 import { notifyWorkoutCompleted } from '../../services/notifications'
+import { useOfflineSaveWorkout, useNetworkStatus } from '../../services/offline'
 import { colors } from '../../theme/colors'
 import type { AppStackParamList } from '../../navigation/AppNavigator'
 import type { WorkoutExercise, Exercise } from '../../types'
@@ -430,6 +431,8 @@ export default function WorkoutScreen() {
 	const { workoutDayId } = route.params
 	const { currentUser } = useAuth()
 	const queryClient = useQueryClient()
+	const { isOffline } = useNetworkStatus()
+	const saveWorkoutMutation = useOfflineSaveWorkout()
 
 	const [progress, setProgress] = useState<Map<string, ExerciseProgress>>(new Map())
 	const [startTime] = useState(new Date())
@@ -514,46 +517,66 @@ export default function WorkoutScreen() {
 			const duration = Math.round((new Date().getTime() - startTime.getTime()) / 60000)
 			const status = completedCount === totalCount ? 'completed' : 'partial'
 
-			await saveCompletedWorkout(
-				currentUser.id,
-				workoutDayId,
-				status,
-				duration,
-				rating,
-				notes || undefined
-			)
+			// Przygotuj dane ćwiczeń do zapisu
+			const exercisesData = exercises.map(ex => {
+				const exProgress = progress.get(ex.id)
+				return {
+					workout_exercise_id: ex.id,
+					is_completed: exProgress?.isCompleted || false,
+					actual_sets: exProgress?.completedSets.length || 0,
+					actual_reps: ex.reps,
+					actual_weight_kg: ex.weight_kg,
+				}
+			})
+
+			// Użyj offline-aware mutation
+			await saveWorkoutMutation.mutateAsync({
+				userId: currentUser.id,
+				data: {
+					workout_day_id: workoutDayId,
+					status,
+					duration_minutes: duration,
+					feeling_rating: rating,
+					client_notes: notes || undefined,
+					exercises: exercisesData,
+				},
+			})
 
 			queryClient.invalidateQueries({ queryKey: ['active-plan'] })
 			queryClient.invalidateQueries({ queryKey: ['workout-stats'] })
 			queryClient.invalidateQueries({ queryKey: ['today-workout-status'] })
 
-			// Wyślij powiadomienie do trenera
-			if (workoutDay?.training_plans?.trainer_id) {
-				// Pobierz user_id trenera
-				const { data: trainerProfile } = await supabase
-					.from('profiles')
-					.select('user_id, first_name')
-					.eq('id', workoutDay.training_plans.trainer_id)
-					.single()
-				
-				if (trainerProfile?.user_id) {
-					const { data: clientProfile } = await supabase
+			// Wyślij powiadomienie do trenera (tylko gdy online)
+			if (!isOffline && workoutDay?.training_plans?.trainer_id) {
+				try {
+					const { data: trainerProfile } = await supabase
 						.from('profiles')
-						.select('first_name, last_name')
-						.eq('user_id', currentUser.id)
+						.select('user_id, first_name')
+						.eq('id', workoutDay.training_plans.trainer_id)
 						.single()
 					
-					const clientName = clientProfile 
-						? `${clientProfile.first_name} ${clientProfile.last_name}`
-						: 'Klient'
-					
-					notifyWorkoutCompleted(trainerProfile.user_id, clientName)
+					if (trainerProfile?.user_id) {
+						const { data: clientProfile } = await supabase
+							.from('profiles')
+							.select('first_name, last_name')
+							.eq('user_id', currentUser.id)
+							.single()
+						
+						const clientName = clientProfile 
+							? `${clientProfile.first_name} ${clientProfile.last_name}`
+							: 'Klient'
+						
+						notifyWorkoutCompleted(trainerProfile.user_id, clientName)
+					}
+				} catch (notifyError) {
+					console.warn('[Workout] Błąd wysyłania powiadomienia:', notifyError)
 				}
 			}
 
+			const offlineMessage = isOffline ? '\n(Zostanie zsynchronizowany po powrocie internetu)' : ''
 			Alert.alert(
 				'Trening zapisany! 🎉',
-				`Ukończyłeś ${completedCount}/${totalCount} ćwiczeń w ${duration} minut`,
+				`Ukończyłeś ${completedCount}/${totalCount} ćwiczeń w ${duration} minut${offlineMessage}`,
 				[{ text: 'OK', onPress: () => navigation.goBack() }]
 			)
 		} catch (error: any) {
@@ -562,7 +585,7 @@ export default function WorkoutScreen() {
 			setIsSaving(false)
 			setShowSummary(false)
 		}
-	}, [currentUser?.id, workoutDayId, workoutDay, completedCount, totalCount, startTime, navigation, queryClient])
+	}, [currentUser?.id, workoutDayId, workoutDay, exercises, progress, completedCount, totalCount, startTime, navigation, queryClient, saveWorkoutMutation, isOffline])
 
 	const handleExit = useCallback(() => {
 		if (completedCount > 0) {
